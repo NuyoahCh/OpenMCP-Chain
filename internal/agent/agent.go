@@ -91,6 +91,14 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 	if strings.TrimSpace(observations) == "" {
 		observations = "未执行任何链上操作"
 	}
+	chainInfo, err := a.web3Client.FetchChainSnapshot(ctx)
+	if err != nil {
+		chainInfo = ethereum.ChainSnapshot{
+			ChainID:     "",
+			BlockNumber: "",
+			Notes:       fmt.Sprintf("获取链上信息失败: %v", err),
+		}
+	}
 
 	result := &TaskResult{
 		Goal:         req.Goal,
@@ -101,6 +109,7 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 		ChainID:      chainInfo.ChainID,
 		BlockNumber:  chainInfo.BlockNumber,
 		Observations: observations,
+		Observations: chainInfo.Notes,
 		CreatedAt:    time.Now().Unix(),
 	}
 

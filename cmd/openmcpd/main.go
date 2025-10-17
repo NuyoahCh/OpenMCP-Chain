@@ -37,6 +37,7 @@ func run(ctx context.Context) error {
 		return err
 	}
 
+	// 初始化大模型客户端。
 	scriptPath := pythonbridge.ResolveScriptPath(cfg.LLM.Python.WorkingDir, cfg.LLM.Python.ScriptPath)
 	llmClient, err := pythonbridge.NewClient(cfg.LLM.Python.PythonExecutable, scriptPath, cfg.LLM.Python.WorkingDir)
 	if err != nil {
