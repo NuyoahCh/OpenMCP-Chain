@@ -60,6 +60,7 @@ func (c *Client) FetchChainSnapshot(ctx context.Context) (ChainSnapshot, error) 
 	}, nil
 }
 
+// callStringResult 发起 JSON-RPC 调用并返回字符串结果。
 func (c *Client) callStringResult(ctx context.Context, method string, params any) (string, error) {
 	var paramSlice []any
 	if params != nil {
@@ -115,6 +116,7 @@ func (c *Client) callStringResult(ctx context.Context, method string, params any
 	return result, nil
 }
 
+// rpcRequest 定义了 JSON-RPC 请求的结构。
 type rpcRequest struct {
 	JSONRPC string `json:"jsonrpc"`
 	Method  string `json:"method"`
@@ -122,6 +124,7 @@ type rpcRequest struct {
 	ID      int    `json:"id"`
 }
 
+// rpcResponse 定义了 JSON-RPC 响应的结构。
 type rpcResponse struct {
 	JSONRPC string          `json:"jsonrpc"`
 	Result  json.RawMessage `json:"result"`
@@ -129,6 +132,7 @@ type rpcResponse struct {
 	ID      int             `json:"id"`
 }
 
+// rpcError 定义了 JSON-RPC 错误的结构。
 type rpcError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
