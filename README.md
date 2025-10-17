@@ -6,6 +6,9 @@ OpenMCP-Chain 是一个将区块链基础设施与大模型智能体深度融合
 
 - **Golang + Python 协同**：通过内置的 Python Bridge 触发推理脚本，便于在 Go 服务中复用社区的模型能力。
 - **Web3 快速接入**：内置 JSON-RPC 客户端，可直接查询链 ID、最新区块高度等关键指标，并支持执行常见读操作（如 `eth_getBalance`、`eth_getTransactionCount`）。
+- **可追踪任务日志**：默认使用本地文件模拟 MySQL 持久化，同时提供真实 MySQL 仓库实现，满足生产环境的数据一致性需求。
+- **任务历史查询**：REST API 除了支持触发智能体执行外，还可以拉取最近的推理记录，便于联调与审计。
+- **上下文记忆驱动的推理**：Agent 会在推理前自动装载最近的任务历史，把经验注入 Prompt，提升回答的连续性与可解释性。
 - **Web3 快速接入**：内置 JSON-RPC 客户端，可直接查询链 ID、最新区块高度等关键指标。
 - **可追踪任务日志**：默认使用本地文件模拟 MySQL 持久化，同时提供真实 MySQL 仓库实现，满足生产环境的数据一致性需求。
 - **任务历史查询**：REST API 除了支持触发智能体执行外，还可以拉取最近的推理记录，便于联调与审计。
@@ -57,6 +60,20 @@ scripts/             # Python 推理脚本、自动化工具
    python scripts/task_client.py invoke --goal "查询账户余额" --chain-action eth_getBalance --address 0x0000000000000000000000000000000000000000
    python scripts/task_client.py history --limit 5
    ```
+
+### 自定义智能体记忆深度
+
+`agent.memory_depth` 用于控制在调用 Python Bridge 前装载多少条历史任务。默认值为 5，可根据业务需求调整：
+
+```json
+{
+  "agent": {
+    "memory_depth": 10
+  }
+}
+```
+
+当历史记录不足时，Agent 会自动忽略缺失项；如果加载历史失败，相应提示会出现在任务的 `observations` 字段中。
 
 ### 启用 MySQL 持久化
 

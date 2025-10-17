@@ -44,6 +44,21 @@ func (c *Client) Generate(ctx context.Context, req llm.Request) (*llm.Response, 
 		"timestamp":    time.Now().Unix(),
 	}
 
+	if len(req.History) > 0 {
+		history := make([]map[string]any, 0, len(req.History))
+		for _, entry := range req.History {
+			history = append(history, map[string]any{
+				"goal":         entry.Goal,
+				"chain_action": entry.ChainAction,
+				"address":      entry.Address,
+				"reply":        entry.Reply,
+				"observations": entry.Observations,
+				"created_at":   entry.CreatedAt,
+			})
+		}
+		payload["history"] = history
+	}
+
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("序列化请求失败: %w", err)

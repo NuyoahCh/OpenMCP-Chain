@@ -15,6 +15,7 @@ type Config struct {
 	Storage StorageConfig `json:"storage"`
 	LLM     LLMConfig     `json:"llm"`
 	Web3    Web3Config    `json:"web3"`
+	Agent   AgentConfig   `json:"agent"`
 	Runtime RuntimeConfig `json:"runtime"`
 }
 
@@ -56,6 +57,11 @@ type Web3Config struct {
 // RuntimeConfig 用于放置运行时的通用参数。
 type RuntimeConfig struct {
 	DataDir string `json:"data_dir"`
+}
+
+// AgentConfig 控制智能体的工作方式。
+type AgentConfig struct {
+	MemoryDepth int `json:"memory_depth"`
 }
 
 // Load 负责解析指定路径的 JSON 配置文件。
@@ -113,5 +119,9 @@ func (c *Config) applyDefaults(baseDir string) {
 		c.Runtime.DataDir = filepath.Join(baseDir, "data")
 	} else if !filepath.IsAbs(c.Runtime.DataDir) {
 		c.Runtime.DataDir = filepath.Join(baseDir, c.Runtime.DataDir)
+	}
+
+	if c.Agent.MemoryDepth <= 0 {
+		c.Agent.MemoryDepth = 5
 	}
 }

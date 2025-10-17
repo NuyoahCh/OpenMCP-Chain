@@ -73,6 +73,7 @@ func run(ctx context.Context) error {
 
 	web3Client := ethereum.NewClient(cfg.Web3.RPCURL)
 
+	ag := agent.New(llmClient, web3Client, taskRepo, agent.WithMemoryDepth(cfg.Agent.MemoryDepth))
 	ag := agent.New(llmClient, web3Client, taskRepo)
 	server := api.NewServer(cfg.Server.Address, ag)
 

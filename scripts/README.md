@@ -4,6 +4,7 @@
 
 ## 现有脚本
 
+- `llm_bridge.py`：读取标准输入中的 JSON（含近期任务历史），输出模拟的大模型思考与回复，可直接被 `openmcpd` 调用。
 - `llm_bridge.py`：读取标准输入中的 JSON，输出模拟的大模型思考与回复，可直接被 `openmcpd` 调用。
 - `task_client.py`：提供命令行工具触发 REST 接口，支持提交新任务与查询历史记录，完全基于 Python 标准库实现。
 

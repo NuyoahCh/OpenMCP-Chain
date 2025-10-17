@@ -16,6 +16,9 @@
       "working_dir": ".."
     }
   },
+  "agent": {
+    "memory_depth": 5
+  },
   "web3": {
     "rpc_url": "http://localhost:8545"
   },

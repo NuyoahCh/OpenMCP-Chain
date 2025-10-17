@@ -76,6 +76,20 @@ Accept: application/json
 ```
 
 > 说明：链上信息依赖配置的 RPC 节点。当节点不可达时，`chain_id`、`block_number` 会为空，并在 `observations` 字段给出错误提示；当调用成功时，`observations` 会包含诸如 `eth_getBalance 返回: ...` 的结果摘要。
+
+### Prompt 上下文与历史记忆
+
+Agent 在触发推理之前，会读取最近 `agent.memory_depth` 条历史任务，将其作为 `history` 字段传递给 Python Bridge。脚本会在思考过程中列出这些参考记录，帮助调用者理解回答来源。若历史数据加载失败，相应信息同样会出现在 `observations` 字段中。
+
+可通过配置调整记忆深度：
+
+```json
+{
+  "agent": {
+    "memory_depth": 3
+  }
+}
+```
 > 说明：链上信息依赖配置的 RPC 节点。当节点不可达时，`chain_id`、`block_number` 会为空，并在 `observations` 字段给出错误提示。
 
 ## 规划中的扩展

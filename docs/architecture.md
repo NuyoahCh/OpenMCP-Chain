@@ -27,6 +27,8 @@ execution, and rigorous observability.
   execution loops.
 * Integrates with the LLM module for inference and with the Web3 module for
   blockchain interactions.
+* Maintains short-term memory by replaying the latest task history into the
+  prompt, helping the LLM preserve context across calls.
 * Enforces policy checks and safety constraints defined by administrators.
 
 ### Large Language Model Adapters (`internal/llm`)
@@ -88,6 +90,8 @@ execution, and rigorous observability.
 ## Runtime Flow
 
 1. An external client submits a task via the API gateway.
+2. The agent runtime validates policies, prepares context (including recent
+   history), and requests inference from an LLM provider.
 2. The agent runtime validates policies, prepares context, and requests
    inference from an LLM provider.
 3. The agent translates the inference result into actionable steps and may
@@ -132,6 +136,12 @@ security, extensibility, and reliability at the forefront.
 
 当前版本通过 `scripts/llm_bridge.py` 演示如何在守护进程内部调用 Python 逻辑：
 
+1. Go 端将任务参数与最近的历史记录序列化为 JSON，通过管道写入脚本标准输入。
+2. Python 端解析参数，生成“思考过程”和“最终回复”两段文本。
+3. Go 端读取 JSON 输出，并合并链上快照、任务元数据后返回给调用方。
+   如果历史上下文加载失败，Agent 会将原因写入 `observations` 便于排查。
+
+这种模式既能利用 Go 的并发和工程化能力，也能灵活接入 Python 生态的模型推理、数据处理库。后续可逐步替换为真正的大模型接口、向量数据库检索等高级功能。
 1. Go 端将任务参数序列化为 JSON，通过管道写入脚本标准输入。
 2. Python 端解析参数，生成“思考过程”和“最终回复”两段文本。
 3. Go 端读取 JSON 输出，并合并链上快照、任务元数据后返回给调用方。

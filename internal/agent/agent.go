@@ -37,6 +37,38 @@ type Agent struct {
 	llmClient   llm.Client
 	web3Client  *ethereum.Client
 	taskStorage mysql.TaskRepository
+	memoryDepth int
+}
+
+// Option 定义可选的 Agent 配置。
+type Option func(*Agent)
+
+const defaultMemoryDepth = 5
+
+// WithMemoryDepth 设置大模型调用时可参考的历史任务数量。
+func WithMemoryDepth(depth int) Option {
+	return func(a *Agent) {
+		a.memoryDepth = depth
+	}
+}
+
+// New 创建一个 Agent。
+func New(llmClient llm.Client, web3Client *ethereum.Client, repo mysql.TaskRepository, opts ...Option) *Agent {
+	ag := &Agent{
+		llmClient:   llmClient,
+		web3Client:  web3Client,
+		taskStorage: repo,
+		memoryDepth: defaultMemoryDepth,
+	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(ag)
+		}
+	}
+	if ag.memoryDepth <= 0 {
+		ag.memoryDepth = defaultMemoryDepth
+	}
+	return ag
 }
 
 // New 创建一个 Agent。
@@ -58,16 +90,20 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 		return nil, errors.New("任务目标不能为空")
 	}
 
+	historyEntries, historyObservation := a.loadHistory(ctx)
+
 	llmOutput, err := a.llmClient.Generate(ctx, llm.Request{
 		Goal:        req.Goal,
 		ChainAction: req.ChainAction,
 		Address:     req.Address,
+		History:     historyEntries,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("大模型推理失败: %w", err)
 	}
 
 	chainInfo := ethereum.ChainSnapshot{}
+	observations := historyObservation
 	var observations string
 	if a.web3Client == nil {
 		observations = "未配置 Web3 客户端"
@@ -91,6 +127,7 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 	if strings.TrimSpace(observations) == "" {
 		observations = "未执行任何链上操作"
 	}
+
 	result := &TaskResult{
 		Goal:         req.Goal,
 		ChainAction:  req.ChainAction,
@@ -159,4 +196,28 @@ func appendObservation(existing, next string) string {
 		return next
 	}
 	return existing + "\n" + next
+}
+
+func (a *Agent) loadHistory(ctx context.Context) ([]llm.HistoryEntry, string) {
+	if a.taskStorage == nil || a.memoryDepth <= 0 {
+		return nil, ""
+	}
+
+	records, err := a.taskStorage.ListLatest(ctx, a.memoryDepth)
+	if err != nil {
+		return nil, appendObservation("", fmt.Sprintf("加载历史任务失败: %v", err))
+	}
+
+	history := make([]llm.HistoryEntry, 0, len(records))
+	for _, record := range records {
+		history = append(history, llm.HistoryEntry{
+			Goal:         record.Goal,
+			ChainAction:  record.ChainAction,
+			Address:      record.Address,
+			Reply:        record.Reply,
+			Observations: record.Observes,
+			CreatedAt:    record.CreatedAt,
+		})
+	}
+	return history, ""
 }
