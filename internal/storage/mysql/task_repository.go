@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"sync"
 )
 
 // TaskRecord 表示一次智能体执行的落库结构。
@@ -38,6 +40,8 @@ type MemoryTaskRepository struct {
 	mu       sync.RWMutex
 	dataFile string
 	records  []TaskRecord
+	mu       sync.Mutex
+	dataFile string
 }
 
 // NewMemoryTaskRepository 创建一个内存任务仓库。
@@ -54,6 +58,7 @@ func NewMemoryTaskRepository(dataDir string) (*MemoryTaskRepository, error) {
 		return nil, err
 	}
 	return repo, nil
+	return &MemoryTaskRepository{dataFile: path}, nil
 }
 
 // Save 以追加写的方式记录任务结果。
@@ -79,6 +84,12 @@ func (m *MemoryTaskRepository) Save(_ context.Context, record TaskRecord) error 
 	m.records = append([]TaskRecord{record}, m.records...)
 	if len(m.records) > 512 {
 		m.records = m.records[:512]
+	}
+	line := fmt.Sprintf("goal=%s|action=%s|address=%s|thought=%s|reply=%s|chain_id=%s|block=%s|observe=%s|created_at=%d\n",
+		record.Goal, record.ChainAction, record.Address, record.Thought, record.Reply, record.ChainID, record.BlockNumber, record.Observes, record.CreatedAt)
+
+	if _, err := file.WriteString(line); err != nil {
+		return fmt.Errorf("写入任务日志失败: %w", err)
 	}
 	return nil
 }
