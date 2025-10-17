@@ -1,13 +1,15 @@
 # Scripts
 
-The `scripts/` directory is reserved for automation utilities that streamline
-local development, testing, and deployment workflows. Scripts should be
-idempotent, well-documented, and safe to run repeatedly.
+`scripts/` 目录用于存放自动化工具与示例脚本。当前已经包含 `llm_bridge.py`，用于演示如何通过 Python 实现大模型推理并与 Go 服务交互。
 
-Suggested additions include:
+## 现有脚本
 
-* `bootstrap.sh` – Provision local dependencies (MySQL, Redis, test blockchain).
-* `migrate.sh` – Apply database migrations across environments.
-* `codegen.sh` – Generate protobuf/SDK artifacts.
+- `llm_bridge.py`：读取标准输入中的 JSON，输出模拟的大模型思考与回复，可直接被 `openmcpd` 调用。
 
-Ensure executable scripts include a shebang and descriptive comments.
+## 编写约定
+
+- 所有脚本必须包含 shebang，并在文件头部使用中文说明用途。
+- 尽量保持幂等，可重复执行。
+- 若依赖外部库，请在 README 或脚本内注明安装方式与替代方案。
+
+后续可以在此目录补充数据库迁移、链上环境初始化等工具脚本。

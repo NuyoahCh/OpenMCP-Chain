@@ -118,3 +118,21 @@ execution, and rigorous observability.
 
 This architecture provides a foundation for iterative development while keeping
 security, extensibility, and reliability at the forefront.
+
+
+## 当前实现进度概览
+
+* **Agent Runtime**：已提供最小可用实现，能够调用 Python Bridge 推理脚本并记录任务结果。
+* **Web3 Interaction**：封装基础的 JSON-RPC 调用，支持查询链 ID 与区块高度，方便后续扩展交易提交能力。
+* **Storage Layer**：在缺乏外部依赖的环境下以本地文件模拟 MySQL，接口保持一致，方便切换到真实数据库。
+* **API Gateway**：暴露 `/api/v1/tasks` REST 接口，用于触发一次完整的“推理 + 链上探测”流程。
+
+## Go + Python 协同模式
+
+当前版本通过 `scripts/llm_bridge.py` 演示如何在守护进程内部调用 Python 逻辑：
+
+1. Go 端将任务参数序列化为 JSON，通过管道写入脚本标准输入。
+2. Python 端解析参数，生成“思考过程”和“最终回复”两段文本。
+3. Go 端读取 JSON 输出，并合并链上快照、任务元数据后返回给调用方。
+
+这种模式既能利用 Go 的并发和工程化能力，也能灵活接入 Python 生态的模型推理、数据处理库。后续可逐步替换为真正的大模型接口、向量数据库检索等高级功能。

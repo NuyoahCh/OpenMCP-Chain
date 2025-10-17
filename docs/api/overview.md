@@ -1,37 +1,49 @@
 # API Overview
 
-The OpenMCP-Chain API surface provides programmatic access to agent lifecycle
-management, audit trails, and configuration endpoints. Interfaces will be
-exposed over both REST and gRPC, with shared protobuf definitions compiled into
-language-specific SDKs.
+当前版本提供一个最小可用的 REST 接口，便于验证“大模型推理 + 区块链观测”的联动流程。后续会逐步扩展为完整的任务编排、审计追踪等能力。
 
-## Planned REST Resources
+## 已实现的 REST 接口
 
-| Resource | Description |
-| --- | --- |
-| `POST /v1/tasks` | Submit a new agent task and receive a tracking identifier. |
-| `GET /v1/tasks/{id}` | Retrieve task status, intermediate artifacts, and blockchain receipts. |
-| `POST /v1/agents` | Provision a new agent profile with policy configuration. |
-| `GET /v1/agents/{id}` | Inspect agent metadata, health, and resource usage. |
-| `GET /v1/audit/{id}` | Fetch signed inference outputs and provenance data. |
+| Method | Path | 描述 |
+| --- | --- | --- |
+| POST | `/api/v1/tasks` | 提交一次智能体任务，返回包含大模型思考、回复以及链上快照的结果。 |
 
-## Authentication
+### 请求示例
 
-* Initial implementation will rely on API keys scoped to project namespaces.
-* Future milestones introduce OAuth2/OpenID Connect and hardware-backed signing
-  for high-assurance operations.
+```http
+POST /api/v1/tasks HTTP/1.1
+Host: localhost:8080
+Content-Type: application/json
 
-## Versioning Strategy
+{
+  "goal": "查询账户余额",
+  "chain_action": "eth_getBalance",
+  "address": "0x0000000000000000000000000000000000000000"
+}
+```
 
-* REST endpoints follow semantic versioning via URL prefix (`/v1`).
-* gRPC services embed version information within protobuf package names.
-* Backward-compatible changes accumulate until a new major version is required.
+### 响应示例
 
-## Telemetry
+```json
+{
+  "thought": "当前目标: 查询账户余额
+预期链上操作: eth_getBalance
+涉及地址: 0x0000000000000000000000000000000000000000
+时间戳: 2024-05-01 12:00:00 UTC",
+  "reply": "我已经理解你的目标『查询账户余额』。下一步可以按照『eth_getBalance』在链上执行，并保持地址 0x0000000000000000000000000000000000000000 的安全。",
+  "chain_id": "0x1",
+  "block_number": "0xabcdef",
+  "observations": "",
+  "created_at": 1714564800
+}
+```
 
-* Each API response includes correlation identifiers for tracing.
-* Rate limiting headers communicate remaining quota and reset windows.
-* Error payloads follow a consistent schema with machine-readable codes.
+> 说明：链上信息依赖配置的 RPC 节点。当节点不可达时，`chain_id`、`block_number` 会为空，并在 `observations` 字段给出错误提示。
 
-Detailed protobuf definitions and OpenAPI specifications will be added as the
-service implementation matures.
+## 规划中的扩展
+
+* 任务状态轮询、事件流订阅。
+* Agent 多实例调度与配额控制。
+* 审计日志与可验证证据的导出接口。
+
+完整的 API 契约（OpenAPI/Protobuf）将在功能稳定后发布。
