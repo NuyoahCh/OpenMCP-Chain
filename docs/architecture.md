@@ -123,6 +123,7 @@ security, extensibility, and reliability at the forefront.
 ## 当前实现进度概览
 
 * **Agent Runtime**：已提供最小可用实现，能够调用 Python Bridge 推理脚本并记录任务结果。
+* **Web3 Interaction**：封装基础的 JSON-RPC 调用，支持查询链 ID、区块高度，并内置 `eth_getBalance`、`eth_getTransactionCount` 等读操作模板，为后续扩展交易提交能力做铺垫。
 * **Web3 Interaction**：封装基础的 JSON-RPC 调用，支持查询链 ID 与区块高度，方便后续扩展交易提交能力。
 * **Storage Layer**：在缺乏外部依赖的环境下以本地文件模拟 MySQL，并提供可选的 `SQLTaskRepository`，通过 `-tags mysql` 即可接入真实数据库。
 * **API Gateway**：暴露 `/api/v1/tasks` REST 接口，支持触发一次完整的“推理 + 链上探测”流程，并新增历史查询能力。

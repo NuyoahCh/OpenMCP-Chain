@@ -60,6 +60,37 @@ func (c *Client) FetchChainSnapshot(ctx context.Context) (ChainSnapshot, error) 
 	}, nil
 }
 
+// ExecuteAction 根据预定义模板执行常见的 JSON-RPC 方法。
+func (c *Client) ExecuteAction(ctx context.Context, action, address string) (string, error) {
+	if c == nil {
+		return "", errors.New("未初始化的以太坊客户端")
+	}
+	action = strings.TrimSpace(action)
+	if action == "" {
+		return "", errors.New("链上操作不能为空")
+	}
+	if strings.TrimSpace(c.rpcURL) == "" {
+		return "", errors.New("未配置以太坊 RPC 地址")
+	}
+
+	switch action {
+	case "eth_getBalance":
+		addr := strings.TrimSpace(address)
+		if addr == "" {
+			return "", errors.New("eth_getBalance 需要提供地址")
+		}
+		return c.callStringResult(ctx, action, []any{addr, "latest"})
+	case "eth_getTransactionCount":
+		addr := strings.TrimSpace(address)
+		if addr == "" {
+			return "", errors.New("eth_getTransactionCount 需要提供地址")
+		}
+		return c.callStringResult(ctx, action, []any{addr, "latest"})
+	default:
+		return "", fmt.Errorf("暂不支持的链上操作: %s", action)
+	}
+}
+
 // callStringResult 发起 JSON-RPC 调用并返回字符串结果。
 func (c *Client) callStringResult(ctx context.Context, method string, params any) (string, error) {
 	var paramSlice []any

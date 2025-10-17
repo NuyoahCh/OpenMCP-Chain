@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"OpenMCP-Chain/internal/llm"
@@ -66,6 +67,30 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 		return nil, fmt.Errorf("大模型推理失败: %w", err)
 	}
 
+	chainInfo := ethereum.ChainSnapshot{}
+	var observations string
+	if a.web3Client == nil {
+		observations = "未配置 Web3 客户端"
+	} else {
+		snapshot, err := a.web3Client.FetchChainSnapshot(ctx)
+		if err != nil {
+			observations = appendObservation(observations, fmt.Sprintf("获取链上信息失败: %v", err))
+		} else {
+			chainInfo = snapshot
+		}
+	}
+
+	if req.ChainAction != "" && a.web3Client != nil {
+		actionResult, actionErr := a.web3Client.ExecuteAction(ctx, req.ChainAction, req.Address)
+		if actionErr != nil {
+			observations = appendObservation(observations, fmt.Sprintf("执行链上操作失败: %v", actionErr))
+		} else {
+			observations = appendObservation(observations, fmt.Sprintf("%s 返回: %s", req.ChainAction, actionResult))
+		}
+	}
+	if strings.TrimSpace(observations) == "" {
+		observations = "未执行任何链上操作"
+	}
 	chainInfo, err := a.web3Client.FetchChainSnapshot(ctx)
 	if err != nil {
 		chainInfo = ethereum.ChainSnapshot{
@@ -83,6 +108,7 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 		Reply:        llmOutput.Reply,
 		ChainID:      chainInfo.ChainID,
 		BlockNumber:  chainInfo.BlockNumber,
+		Observations: observations,
 		Observations: chainInfo.Notes,
 		CreatedAt:    time.Now().Unix(),
 	}
@@ -132,4 +158,15 @@ func (a *Agent) ListHistory(ctx context.Context, limit int) ([]TaskResult, error
 		})
 	}
 	return results, nil
+}
+
+func appendObservation(existing, next string) string {
+	next = strings.TrimSpace(next)
+	if next == "" {
+		return existing
+	}
+	if strings.TrimSpace(existing) == "" {
+		return next
+	}
+	return existing + "\n" + next
 }
