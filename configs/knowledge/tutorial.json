@@ -1,0 +1,20 @@
+[
+  {
+    "title": "账户余额读取基础",
+    "content": "使用 eth_getBalance 可以读取任意地址的余额，单位为十六进制 Wei。生产环境应先确认 RPC 节点同步状态。",
+    "keywords": ["balance", "余额", "eth_getBalance"],
+    "tags": ["入门", "读取"]
+  },
+  {
+    "title": "账户 nonce 说明",
+    "content": "eth_getTransactionCount 返回当前账户的 nonce，可以用于推导下一笔交易的顺序号。",
+    "keywords": ["nonce", "eth_getTransactionCount"],
+    "tags": ["交易", "读取"]
+  },
+  {
+    "title": "安全提示",
+    "content": "对外暴露的 RPC 节点可能限制写操作，遇到连接失败时可以先检查节点是否可达或开启 mock 模式。",
+    "keywords": ["连接", "rpc"],
+    "tags": ["故障排查"]
+  }
+]

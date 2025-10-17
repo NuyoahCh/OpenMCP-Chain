@@ -59,6 +59,17 @@ func (c *Client) Generate(ctx context.Context, req llm.Request) (*llm.Response, 
 		payload["history"] = history
 	}
 
+	if len(req.Knowledge) > 0 {
+		knowledgeCards := make([]map[string]any, 0, len(req.Knowledge))
+		for _, card := range req.Knowledge {
+			knowledgeCards = append(knowledgeCards, map[string]any{
+				"title":   card.Title,
+				"content": card.Content,
+			})
+		}
+		payload["knowledge"] = knowledgeCards
+	}
+
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("序列化请求失败: %w", err)

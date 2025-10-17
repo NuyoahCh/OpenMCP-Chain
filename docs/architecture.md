@@ -29,6 +29,8 @@ execution, and rigorous observability.
   blockchain interactions.
 * Maintains short-term memory by replaying the latest task history into the
   prompt, helping the LLM preserve context across calls.
+* Enriches each request with curated knowledge cards so the LLM can reference
+  hard-coded playbooks or safety checklists.
 * Enforces policy checks and safety constraints defined by administrators.
 
 ### Large Language Model Adapters (`internal/llm`)
@@ -38,6 +40,14 @@ execution, and rigorous observability.
 * Manages prompt templates, token accounting, caching hints, and streaming
   responses.
 * Enables future support for decentralized inference marketplaces.
+
+### Knowledge Base (`internal/knowledge`)
+
+* Loads JSON-based knowledge snippets with optional keywords and tags for fast
+  matching。
+* Provides lightweight semantic enrichment without 引入外部依赖，适合在缺乏在线知识库
+  时为 Agent 注入领域经验。
+* Exposes a configurable `max_results` to control prompt length and avoid噪声。
 
 ### Web3 Interaction Layer (`internal/web3`)
 
@@ -91,6 +101,8 @@ execution, and rigorous observability.
 
 1. An external client submits a task via the API gateway.
 2. The agent runtime validates policies, prepares context (including recent
+   history and relevant knowledge cards), and requests inference from an LLM
+   provider.
    history), and requests inference from an LLM provider.
 2. The agent runtime validates policies, prepares context, and requests
    inference from an LLM provider.

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"OpenMCP-Chain/internal/knowledge"
 	"OpenMCP-Chain/internal/llm"
 	"OpenMCP-Chain/internal/storage/mysql"
 	"OpenMCP-Chain/internal/web3/ethereum"
@@ -38,6 +39,7 @@ type Agent struct {
 	web3Client  *ethereum.Client
 	taskStorage mysql.TaskRepository
 	memoryDepth int
+	knowledge   knowledge.Provider
 }
 
 // Option 定义可选的 Agent 配置。
@@ -49,6 +51,13 @@ const defaultMemoryDepth = 5
 func WithMemoryDepth(depth int) Option {
 	return func(a *Agent) {
 		a.memoryDepth = depth
+	}
+}
+
+// WithKnowledgeProvider 配置知识库，用于在推理前补充上下文。
+func WithKnowledgeProvider(provider knowledge.Provider) Option {
+	return func(a *Agent) {
+		a.knowledge = provider
 	}
 }
 
@@ -82,18 +91,21 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 	}
 
 	historyEntries, historyObservation := a.loadHistory(ctx)
+	knowledgeEntries, knowledgeObservation := a.collectKnowledge(req.Goal, req.ChainAction)
 
 	llmOutput, err := a.llmClient.Generate(ctx, llm.Request{
 		Goal:        req.Goal,
 		ChainAction: req.ChainAction,
 		Address:     req.Address,
 		History:     historyEntries,
+		Knowledge:   knowledgeEntries,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("大模型推理失败: %w", err)
 	}
 
 	chainInfo := ethereum.ChainSnapshot{}
+	observations := appendObservation(historyObservation, knowledgeObservation)
 	observations := historyObservation
 	if a.web3Client == nil {
 		observations = "未配置 Web3 客户端"
@@ -210,4 +222,36 @@ func (a *Agent) loadHistory(ctx context.Context) ([]llm.HistoryEntry, string) {
 		})
 	}
 	return history, ""
+}
+
+func (a *Agent) collectKnowledge(goal, chainAction string) ([]llm.KnowledgeCard, string) {
+	if a.knowledge == nil {
+		return nil, ""
+	}
+
+	snippets := a.knowledge.Query(goal, chainAction)
+	if len(snippets) == 0 {
+		return nil, ""
+	}
+
+	knowledgeCards := make([]llm.KnowledgeCard, 0, len(snippets))
+	titles := make([]string, 0, len(snippets))
+	for _, snippet := range snippets {
+		if strings.TrimSpace(snippet.Title) == "" && strings.TrimSpace(snippet.Content) == "" {
+			continue
+		}
+		knowledgeCards = append(knowledgeCards, llm.KnowledgeCard{
+			Title:   snippet.Title,
+			Content: snippet.Content,
+		})
+		if snippet.Title != "" {
+			titles = append(titles, snippet.Title)
+		}
+	}
+
+	observation := ""
+	if len(titles) > 0 {
+		observation = fmt.Sprintf("知识库提示: %s", strings.Join(titles, "；"))
+	}
+	return knowledgeCards, observation
 }

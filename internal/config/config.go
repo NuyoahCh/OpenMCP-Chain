@@ -11,6 +11,13 @@ import (
 
 // Config 描述了 OpenMCP 在启动阶段需要加载的核心配置。
 type Config struct {
+	Server    ServerConfig    `json:"server"`
+	Storage   StorageConfig   `json:"storage"`
+	LLM       LLMConfig       `json:"llm"`
+	Web3      Web3Config      `json:"web3"`
+	Agent     AgentConfig     `json:"agent"`
+	Runtime   RuntimeConfig   `json:"runtime"`
+	Knowledge KnowledgeConfig `json:"knowledge"`
 	Server  ServerConfig  `json:"server"`
 	Storage StorageConfig `json:"storage"`
 	LLM     LLMConfig     `json:"llm"`
@@ -62,6 +69,12 @@ type RuntimeConfig struct {
 // AgentConfig 控制智能体的工作方式。
 type AgentConfig struct {
 	MemoryDepth int `json:"memory_depth"`
+}
+
+// KnowledgeConfig 描述知识库的加载方式。
+type KnowledgeConfig struct {
+	Source     string `json:"source"`
+	MaxResults int    `json:"max_results"`
 }
 
 // Load 负责解析指定路径的 JSON 配置文件。
@@ -123,5 +136,12 @@ func (c *Config) applyDefaults(baseDir string) {
 
 	if c.Agent.MemoryDepth <= 0 {
 		c.Agent.MemoryDepth = 5
+	}
+
+	if c.Knowledge.MaxResults <= 0 {
+		c.Knowledge.MaxResults = 3
+	}
+	if c.Knowledge.Source != "" && !filepath.IsAbs(c.Knowledge.Source) {
+		c.Knowledge.Source = filepath.Join(baseDir, c.Knowledge.Source)
 	}
 }

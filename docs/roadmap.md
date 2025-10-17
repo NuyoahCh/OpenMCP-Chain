@@ -20,6 +20,7 @@ execution.
   * executing a predefined smart-contract interaction (read/write).
 * Persist agent session data, prompts, and blockchain receipts to MySQL.
 * 提供任务历史查询接口与命令行辅助工具，方便联调与验收。
+* 引入可配置的静态知识库，在推理时补充领域提示与安全建议。
 * Add Redis-backed cache for LLM responses and rate limiting.
 * Produce structured logs and basic Prometheus metrics.
 

@@ -8,12 +8,19 @@ type Request struct {
 	ChainAction string
 	Address     string
 	History     []HistoryEntry
+	Knowledge   []KnowledgeCard
 }
 
 // Response 是大模型推理得到的结构化输出。
 type Response struct {
 	Thought string
 	Reply   string
+}
+
+// KnowledgeCard 表示提供给大模型的知识切片，帮助生成更加准确的回复。
+type KnowledgeCard struct {
+	Title   string
+	Content string
 }
 
 // Client 定义了调用大模型的统一接口。

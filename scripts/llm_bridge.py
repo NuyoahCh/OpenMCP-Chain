@@ -32,6 +32,26 @@ def _format_history_lines(history: Iterable[dict[str, Any]]) -> list[str]:
     return lines
 
 
+def _format_knowledge_lines(knowledge: Iterable[dict[str, Any]]) -> list[str]:
+    lines: list[str] = ["知识库参考："]
+    for idx, item in enumerate(knowledge, start=1):
+        title = str(item.get("title", "知识点")) or "知识点"
+        content = str(item.get("content", ""))
+        if len(content) > 80:
+            content = content[:77] + "..."
+        lines.append(f"- [{idx}] {title}: {content or '暂无详细内容'}")
+        if idx >= 3:
+            break
+    return lines
+
+
+def build_reply(
+    goal: str,
+    action: str,
+    address: str,
+    history: list[dict[str, Any]],
+    knowledge: list[dict[str, Any]],
+) -> tuple[str, str]:
 def build_reply(goal: str, action: str, address: str, history = None) -> tuple[str, str]:
     if history is None:
         history = []
@@ -45,6 +65,8 @@ def build_reply(goal: str, action: str, address: str, history = None) -> tuple[s
     ]
     if history:
         thought_lines.extend(_format_history_lines(history))
+    if knowledge:
+        thought_lines.extend(_format_knowledge_lines(knowledge))
     thought = "\n".join(thought_lines)
 
     reply = (
@@ -57,6 +79,12 @@ def build_reply(goal: str, action: str, address: str, history = None) -> tuple[s
             reply += f" 同时我参考了历史任务『{latest_goal}』的经验，以保证策略保持一致。"
         else:
             reply += " 我也结合了最近的任务经验，帮助你更快迭代。"
+    if knowledge:
+        key_title = str(knowledge[0].get("title", "知识库建议")).strip()
+        if key_title:
+            reply += f" 我额外查阅了知识库中的『{key_title}』，为你的下一步提供理论依据。"
+        else:
+            reply += " 我也参考了知识库中的相关条目，以提升方案可靠性。"
     return thought, reply
 
 
@@ -84,6 +112,16 @@ def main() -> None:
         if isinstance(item, dict):
             normalized_history.append(item)
 
+    knowledge = payload.get("knowledge")
+    if not isinstance(knowledge, list):
+        knowledge = []
+
+    normalized_knowledge: list[dict[str, Any]] = []
+    for item in knowledge:
+        if isinstance(item, dict):
+            normalized_knowledge.append(item)
+
+    thought, reply = build_reply(goal, action, address, normalized_history, normalized_knowledge)
     thought, reply = build_reply(goal, action, address, normalized_history)
     json.dump({"thought": thought, "reply": reply}, sys.stdout, ensure_ascii=False)
 

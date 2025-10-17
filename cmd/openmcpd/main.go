@@ -11,6 +11,7 @@ import (
 	"OpenMCP-Chain/internal/agent"
 	"OpenMCP-Chain/internal/api"
 	"OpenMCP-Chain/internal/config"
+	"OpenMCP-Chain/internal/knowledge"
 	"OpenMCP-Chain/internal/llm/pythonbridge"
 	"OpenMCP-Chain/internal/storage/mysql"
 	"OpenMCP-Chain/internal/web3/ethereum"
@@ -73,6 +74,22 @@ func run(ctx context.Context) error {
 
 	web3Client := ethereum.NewClient(cfg.Web3.RPCURL)
 
+	var knowledgeProvider knowledge.Provider
+	if cfg.Knowledge.Source != "" {
+		provider, err := knowledge.LoadStaticProvider(cfg.Knowledge.Source, cfg.Knowledge.MaxResults)
+		if err != nil {
+			return err
+		}
+		knowledgeProvider = provider
+	}
+
+	ag := agent.New(
+		llmClient,
+		web3Client,
+		taskRepo,
+		agent.WithMemoryDepth(cfg.Agent.MemoryDepth),
+		agent.WithKnowledgeProvider(knowledgeProvider),
+	)
 	ag := agent.New(llmClient, web3Client, taskRepo)
 	server := api.NewServer(cfg.Server.Address, ag)
 

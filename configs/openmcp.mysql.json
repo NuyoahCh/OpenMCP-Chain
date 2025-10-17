@@ -20,6 +20,10 @@
   "agent": {
     "memory_depth": 5
   },
+  "knowledge": {
+    "source": "../configs/knowledge/tutorial.json",
+    "max_results": 3
+  },
   "web3": {
     "rpc_url": "http://localhost:8545"
   },
