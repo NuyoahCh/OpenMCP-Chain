@@ -1,0 +1,25 @@
+{
+  "server": {
+    "address": ":8080"
+  },
+  "storage": {
+    "task_store": {
+      "driver": "memory"
+    }
+  },
+  "llm": {
+    "provider": "python_bridge",
+    "python_bridge": {
+      "enabled": true,
+      "python_executable": "python3",
+      "script_path": "scripts/llm_bridge.py",
+      "working_dir": ".."
+    }
+  },
+  "web3": {
+    "rpc_url": "http://localhost:8545"
+  },
+  "runtime": {
+    "data_dir": "data"
+  }
+}
