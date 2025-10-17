@@ -27,8 +27,6 @@ func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/tasks", s.handleTasks)
 
-	mux.HandleFunc("/api/v1/tasks", s.handleCreateTask)
-
 	// 配置 HTTP 服务器。
 	server := &http.Server{
 		Addr:              s.addr,
@@ -66,12 +64,6 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "仅支持 GET/POST", http.StatusMethodNotAllowed)
 	}
 }
-
-func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
-	if s.agent == nil {
-		http.Error(w, "Agent 未初始化", http.StatusServiceUnavailable)
-		return
-	}
 
 // handleCreateTask 处理创建智能体任务的请求。
 func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
@@ -124,8 +116,6 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(results)
 }
 
-// withContext 确保请求处理能够感知根上下文取消。
-func withContext(ctx context.Context, handler http.Handler) http.Handler {
 // withContext 确保请求处理能够感知根上下文取消。
 func withContext(ctx context.Context, handler http.Handler) http.Handler {
 	// 包装处理器以检查上下文状态。
