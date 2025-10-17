@@ -27,12 +27,14 @@ func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/tasks", s.handleTasks)
 
+	// 配置 HTTP 服务器。
 	server := &http.Server{
 		Addr:              s.addr,
 		Handler:           withContext(ctx, mux),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
+	// 启动服务器并监听关闭信号。
 	errCh := make(chan error, 1)
 	go func() {
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -69,12 +71,22 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+// handleCreateTask 处理创建智能体任务的请求。
+func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
+	// 仅支持 POST 方法。
+	if r.Method != http.MethodPost {
+		http.Error(w, "仅支持 POST", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// 解析请求体。
 	var req agent.TaskRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "请求体解析失败", http.StatusBadRequest)
 		return
 	}
 
+	// 调用智能体执行任务。
 	ctx := r.Context()
 	result, err := s.agent.Execute(ctx, req)
 	if err != nil {
@@ -82,6 +94,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 返回结果。
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(result)
 }
@@ -111,6 +124,7 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 
 // withContext 确保请求处理能够感知根上下文取消。
 func withContext(ctx context.Context, handler http.Handler) http.Handler {
+	// 包装处理器以检查上下文状态。
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-ctx.Done():

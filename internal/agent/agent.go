@@ -71,6 +71,15 @@ func New(llmClient llm.Client, web3Client *ethereum.Client, repo mysql.TaskRepos
 	return ag
 }
 
+// New 创建一个 Agent。
+func New(llmClient llm.Client, web3Client *ethereum.Client, repo mysql.TaskRepository) *Agent {
+	return &Agent{
+		llmClient:   llmClient,
+		web3Client:  web3Client,
+		taskStorage: repo,
+	}
+}
+
 // Execute 根据任务目标调用大模型，并尝试从链上获取实时信息。
 func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, error) {
 	if a.llmClient == nil {
@@ -95,6 +104,7 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 
 	chainInfo := ethereum.ChainSnapshot{}
 	observations := historyObservation
+	var observations string
 	if a.web3Client == nil {
 		observations = "未配置 Web3 客户端"
 	} else {

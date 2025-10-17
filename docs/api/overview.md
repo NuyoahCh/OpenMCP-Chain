@@ -7,6 +7,7 @@
 | Method | Path | 描述 |
 | --- | --- | --- |
 | POST | `/api/v1/tasks` | 提交一次智能体任务，返回包含大模型思考、回复、链上快照与指定 JSON-RPC 调用结果的响应。 |
+| POST | `/api/v1/tasks` | 提交一次智能体任务，返回包含大模型思考、回复以及链上快照的结果。 |
 | GET | `/api/v1/tasks` | 查询最近的任务执行记录，可通过 `limit` 参数控制返回数量。 |
 
 ### 请求示例
@@ -35,6 +36,14 @@ Content-Type: application/json
   "chain_id": "0x1",
   "block_number": "0xabcdef",
   "observations": "eth_getBalance 返回: 0x0234c8a3397aab58",
+  "thought": "当前目标: 查询账户余额
+预期链上操作: eth_getBalance
+涉及地址: 0x0000000000000000000000000000000000000000
+时间戳: 2024-05-01 12:00:00 UTC",
+  "reply": "我已经理解你的目标『查询账户余额』。下一步可以按照『eth_getBalance』在链上执行，并保持地址 0x0000000000000000000000000000000000000000 的安全。",
+  "chain_id": "0x1",
+  "block_number": "0xabcdef",
+  "observations": "",
   "created_at": 1714564800
 }
 ```
@@ -60,6 +69,7 @@ Accept: application/json
     "chain_id": "0x1",
     "block_number": "0xabcdef",
     "observations": "eth_getBalance 返回: 0x0234c8a3397aab58",
+    "observations": "",
     "created_at": 1714564800
   }
 ]
@@ -80,6 +90,7 @@ Agent 在触发推理之前，会读取最近 `agent.memory_depth` 条历史任�
   }
 }
 ```
+> 说明：链上信息依赖配置的 RPC 节点。当节点不可达时，`chain_id`、`block_number` 会为空，并在 `observations` 字段给出错误提示。
 
 ## 规划中的扩展
 
