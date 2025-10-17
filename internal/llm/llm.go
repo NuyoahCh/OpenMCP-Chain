@@ -8,17 +8,12 @@ type Request struct {
 	ChainAction string
 	Address     string
 	History     []HistoryEntry
-    Goal        string
-    ChainAction string
-    Address     string
 }
 
 // Response 是大模型推理得到的结构化输出。
 type Response struct {
 	Thought string
 	Reply   string
-    Thought string
-    Reply   string
 }
 
 // Client 定义了调用大模型的统一接口。
@@ -34,5 +29,4 @@ type HistoryEntry struct {
 	Reply        string
 	Observations string
 	CreatedAt    int64
-    Generate(ctx context.Context, req Request) (*Response, error)
 }
