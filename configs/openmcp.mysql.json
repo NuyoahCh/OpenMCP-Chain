@@ -4,7 +4,8 @@
   },
   "storage": {
     "task_store": {
-      "driver": "memory"
+      "driver": "mysql",
+      "dsn": "openmcp:openmcp@tcp(127.0.0.1:3306)/openmcp?parseTime=true&loc=Local"
     }
   },
   "llm": {
@@ -21,8 +22,5 @@
   },
   "runtime": {
     "data_dir": "../data"
-  }
-}
-    "data_dir": "data"
   }
 }

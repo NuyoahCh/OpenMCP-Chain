@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"OpenMCP-Chain/internal/agent"
@@ -24,6 +25,8 @@ func NewServer(addr string, ag *agent.Agent) *Server {
 // Start 启动 HTTP 服务，直到上下文取消或出现错误。
 func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/tasks", s.handleTasks)
+
 	mux.HandleFunc("/api/v1/tasks", s.handleCreateTask)
 
 	// 配置 HTTP 服务器。
@@ -53,6 +56,23 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 }
 
+func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodPost:
+		s.handleCreateTask(w, r)
+	case http.MethodGet:
+		s.handleListTasks(w, r)
+	default:
+		http.Error(w, "仅支持 GET/POST", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
+	if s.agent == nil {
+		http.Error(w, "Agent 未初始化", http.StatusServiceUnavailable)
+		return
+	}
+
 // handleCreateTask 处理创建智能体任务的请求。
 func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	// 仅支持 POST 方法。
@@ -81,6 +101,31 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(result)
 }
 
+func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
+	limit := 20
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	ctx := r.Context()
+	if s.agent == nil {
+		http.Error(w, "Agent 未初始化", http.StatusServiceUnavailable)
+		return
+	}
+	results, err := s.agent.ListHistory(ctx, limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(results)
+}
+
+// withContext 确保请求处理能够感知根上下文取消。
+func withContext(ctx context.Context, handler http.Handler) http.Handler {
 // withContext 确保请求处理能够感知根上下文取消。
 func withContext(ctx context.Context, handler http.Handler) http.Handler {
 	// 包装处理器以检查上下文状态。

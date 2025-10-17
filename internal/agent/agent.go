@@ -20,6 +20,9 @@ type TaskRequest struct {
 
 // TaskResult 汇总大模型与链上交互得到的结果。
 type TaskResult struct {
+	Goal         string `json:"goal"`
+	ChainAction  string `json:"chain_action"`
+	Address      string `json:"address"`
 	Thought      string `json:"thought"`
 	Reply        string `json:"reply"`
 	ChainID      string `json:"chain_id"`
@@ -73,6 +76,9 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 	}
 
 	result := &TaskResult{
+		Goal:         req.Goal,
+		ChainAction:  req.ChainAction,
+		Address:      req.Address,
 		Thought:      llmOutput.Thought,
 		Reply:        llmOutput.Reply,
 		ChainID:      chainInfo.ChainID,
@@ -98,4 +104,32 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 	}
 
 	return result, nil
+}
+
+// ListHistory 获取最近的任务执行记录。
+func (a *Agent) ListHistory(ctx context.Context, limit int) ([]TaskResult, error) {
+	if a.taskStorage == nil {
+		return nil, errors.New("未配置任务仓库")
+	}
+
+	records, err := a.taskStorage.ListLatest(ctx, limit)
+	if err != nil {
+		return nil, fmt.Errorf("查询任务记录失败: %w", err)
+	}
+
+	results := make([]TaskResult, 0, len(records))
+	for _, record := range records {
+		results = append(results, TaskResult{
+			Goal:         record.Goal,
+			ChainAction:  record.ChainAction,
+			Address:      record.Address,
+			Thought:      record.Thought,
+			Reply:        record.Reply,
+			ChainID:      record.ChainID,
+			BlockNumber:  record.BlockNumber,
+			Observations: record.Observes,
+			CreatedAt:    record.CreatedAt,
+		})
+	}
+	return results, nil
 }
