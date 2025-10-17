@@ -52,6 +52,9 @@ def build_reply(
     history: list[dict[str, Any]],
     knowledge: list[dict[str, Any]],
 ) -> tuple[str, str]:
+def build_reply(goal: str, action: str, address: str, history = None) -> tuple[str, str]:
+    if history is None:
+        history = []
     """根据输入生成思考过程与回复。"""
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
     thought_lines = [
@@ -119,6 +122,7 @@ def main() -> None:
             normalized_knowledge.append(item)
 
     thought, reply = build_reply(goal, action, address, normalized_history, normalized_knowledge)
+    thought, reply = build_reply(goal, action, address, normalized_history)
     json.dump({"thought": thought, "reply": reply}, sys.stdout, ensure_ascii=False)
 
 

@@ -38,6 +38,7 @@ func run(ctx context.Context) error {
 		return err
 	}
 
+	// 初始化大模型客户端。
 	scriptPath := pythonbridge.ResolveScriptPath(cfg.LLM.Python.WorkingDir, cfg.LLM.Python.ScriptPath)
 	llmClient, err := pythonbridge.NewClient(cfg.LLM.Python.PythonExecutable, scriptPath, cfg.LLM.Python.WorkingDir)
 	if err != nil {
@@ -89,6 +90,7 @@ func run(ctx context.Context) error {
 		agent.WithMemoryDepth(cfg.Agent.MemoryDepth),
 		agent.WithKnowledgeProvider(knowledgeProvider),
 	)
+	ag := agent.New(llmClient, web3Client, taskRepo)
 	server := api.NewServer(cfg.Server.Address, ag)
 
 	if err := server.Start(ctx); err != nil && err != context.Canceled {
