@@ -18,12 +18,6 @@ type Config struct {
 	Agent     AgentConfig     `json:"agent"`
 	Runtime   RuntimeConfig   `json:"runtime"`
 	Knowledge KnowledgeConfig `json:"knowledge"`
-	Server  ServerConfig  `json:"server"`
-	Storage StorageConfig `json:"storage"`
-	LLM     LLMConfig     `json:"llm"`
-	Web3    Web3Config    `json:"web3"`
-	Agent   AgentConfig   `json:"agent"`
-	Runtime RuntimeConfig `json:"runtime"`
 }
 
 // ServerConfig 控制 API 服务的监听地址等参数。

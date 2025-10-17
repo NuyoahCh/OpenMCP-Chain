@@ -65,12 +65,6 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
-	if s.agent == nil {
-		http.Error(w, "Agent 未初始化", http.StatusServiceUnavailable)
-		return
-	}
-
 // handleCreateTask 处理创建智能体任务的请求。
 func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	// 仅支持 POST 方法。

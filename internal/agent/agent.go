@@ -106,7 +106,6 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 
 	chainInfo := ethereum.ChainSnapshot{}
 	observations := appendObservation(historyObservation, knowledgeObservation)
-	observations := historyObservation
 	if a.web3Client == nil {
 		observations = "未配置 Web3 客户端"
 	} else {

@@ -90,7 +90,6 @@ func run(ctx context.Context) error {
 		agent.WithMemoryDepth(cfg.Agent.MemoryDepth),
 		agent.WithKnowledgeProvider(knowledgeProvider),
 	)
-	ag := agent.New(llmClient, web3Client, taskRepo)
 	server := api.NewServer(cfg.Server.Address, ag)
 
 	if err := server.Start(ctx); err != nil && err != context.Canceled {
