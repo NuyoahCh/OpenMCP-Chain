@@ -2,6 +2,7 @@ package ethereum
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	"testing"
 	"time"
@@ -123,6 +124,30 @@ func TestClientDeploySubscribeBatch(t *testing.T) {
 	}
 	if balanceHex == "" {
 		t.Fatal("expected balance result")
+	}
+}
+
+func waitForReceipt(ctx context.Context, backend *backends.SimulatedBackend, hash common.Hash) (*coretypes.Receipt, error) {
+	backend.Commit()
+
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		receipt, err := backend.TransactionReceipt(ctx, hash)
+		if err == nil && receipt != nil {
+			return receipt, nil
+		}
+		if err != nil && !errors.Is(err, gethcore.NotFound) {
+			return nil, err
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			backend.Commit()
+		}
 	}
 }
 
