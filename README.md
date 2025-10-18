@@ -7,6 +7,7 @@ OpenMCP-Chain 是一个将区块链基础设施与大模型智能体深度融合
 - [核心特性](#核心特性)
 - [架构与文档](#架构与文档)
 - [快速入门](#快速入门)
+- [前端控制台](#前端控制台)
 - [API 速览](#api-速览)
 - [示例脚本](#示例脚本)
 - [常见问题](#常见问题)
@@ -82,6 +83,24 @@ python examples/task_quickstart.py history --limit 5
 - `examples/README.md`：记录示例依赖与运行方式，便于扩展更多脚本或 Notebook。
 
 欢迎补充新的示例，并在 PR 中引用相关文档章节。
+
+## 前端控制台
+
+项目提供一个基于 React + Vite 的轻量级前端，帮助快速连调 `/api/v1/tasks` 接口。源码位于 [`web/`](web/README.md)，支持：
+
+- 图形化填写任务目标、链上操作与链上地址；
+- 实时轮询任务状态，并展示模型思考、回复与链上观测结果；
+- 可通过 `VITE_API_BASE_URL` 环境变量自定义后端地址。
+
+启动方式：
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+默认会连接本地的 `http://127.0.0.1:8080` 服务，可结合 `OPENMCP_CONFIG=$(pwd)/configs/openmcp.json go run ./cmd/openmcpd` 快速体验端到端流程。
 
 ## 常见问题
 
