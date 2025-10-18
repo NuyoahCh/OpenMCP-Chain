@@ -12,7 +12,7 @@ import (
 	"OpenMCP-Chain/deploy/migrations"
 )
 
-var embeddedMigrations = migrations.Files
+var embeddedMigrations fs.FS = migrations.Files
 
 type migrationFile struct {
 	version    string
@@ -106,7 +106,7 @@ func loadMigrationFiles() ([]migrationFile, error) {
 			continue
 		}
 		name := entry.Name()
-		contentBytes, err := embeddedMigrations.ReadFile(name)
+		contentBytes, err := fs.ReadFile(embeddedMigrations, name)
 		if err != nil {
 			return nil, fmt.Errorf("读取迁移文件 %s 失败: %w", name, err)
 		}
