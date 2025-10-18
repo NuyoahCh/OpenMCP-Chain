@@ -96,9 +96,9 @@ func TestClientDeploySubscribeBatch(t *testing.T) {
 
 	backend.Commit()
 
-	receipt, err := waitForReceipt(ctx, backend, signed.Hash())
+	receipt, err := bind.WaitMined(ctx, backend, signed)
 	if err != nil {
-		t.Fatalf("wait receipt: %v", err)
+		t.Fatalf("wait mined: %v", err)
 	}
 	if len(receipt.Logs) == 0 {
 		t.Fatal("expected receipt to contain logs")

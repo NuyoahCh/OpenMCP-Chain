@@ -231,12 +231,15 @@ ALTER TABLE auth_users ADD COLUMN username VARCHAR(128);`)},
 	migrations, err := loadMigrationFiles()
 	if err != nil {
 		t.Fatalf("load test migrations failed: %v", err)
+	migrations, err := loadMigrationFiles()
+	if err != nil {
+		t.Fatalf("load migrations failed: %v", err)
 	}
 
 	ops := []mockOperation{
 		execOp(`CREATE TABLE IF NOT EXISTS schema_migrations (
-        version VARCHAR(32) NOT NULL PRIMARY KEY,
-        applied_at BIGINT NOT NULL
+	version VARCHAR(32) NOT NULL PRIMARY KEY,
+	applied_at BIGINT NOT NULL
 )`, mockResult{}),
 		queryOp(`SELECT version FROM schema_migrations`, mockRowsData{columns: []string{"version"}}),
 	}
