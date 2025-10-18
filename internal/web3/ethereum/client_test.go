@@ -92,13 +92,23 @@ func TestClientDeploySubscribeBatch(t *testing.T) {
 		t.Fatalf("expected 1 hash, got %d", len(hashes))
 	}
 
+	backend.Commit()
+
+	receipt, err := bind.WaitMined(ctx, backend, signed)
+	if err != nil {
+		t.Fatalf("wait mined: %v", err)
+	}
+	if len(receipt.Logs) == 0 {
+		t.Fatal("expected receipt to contain logs")
+	}
+
 	logCh := sub.Logs()
 	select {
 	case log := <-logCh:
 		if log.Address != deployResult.ContractAddress {
 			t.Fatalf("unexpected log address %s", log.Address.Hex())
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for event log")
 	}
 
