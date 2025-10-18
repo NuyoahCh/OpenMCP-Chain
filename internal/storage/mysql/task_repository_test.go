@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/fstest"
 	"time"
 )
 
@@ -202,6 +203,34 @@ func TestSQLTaskRepositoryWithTransaction(t *testing.T) {
 func TestSQLTaskRepositoryRunMigrations(t *testing.T) {
 	t.Parallel()
 
+	originalFS := embeddedMigrations
+
+	realMigrations, err := loadMigrationFiles()
+	if err != nil {
+		t.Fatalf("load real migrations failed: %v", err)
+	}
+	if len(realMigrations) == 0 {
+		t.Fatal("expected at least one real migration")
+	}
+
+	t.Cleanup(func() { embeddedMigrations = originalFS })
+
+	embeddedMigrations = fstest.MapFS{
+		"0001_create_tasks.sql": {Data: []byte(`CREATE TABLE IF NOT EXISTS tasks (
+    id BIGINT PRIMARY KEY
+);
+
+CREATE INDEX idx_tasks_created_at ON tasks (id);`)},
+		"0002_add_auth.sql": {Data: []byte(`CREATE TABLE IF NOT EXISTS auth_users (
+    id BIGINT PRIMARY KEY
+);
+
+ALTER TABLE auth_users ADD COLUMN username VARCHAR(128);`)},
+	}
+
+	migrations, err := loadMigrationFiles()
+	if err != nil {
+		t.Fatalf("load test migrations failed: %v", err)
 	migrations, err := loadMigrationFiles()
 	if err != nil {
 		t.Fatalf("load migrations failed: %v", err)

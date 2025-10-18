@@ -18,8 +18,9 @@ import (
 )
 
 const (
-	simpleContractABI = "[]"
-	simpleContractBin = "0x6006600c60003960066000f360006000a000"
+	simpleContractABI        = "[]"
+	simpleContractBin        = "0x6027600c60003960276000f37f0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2060006000a100"
+	simpleContractEventTopic = "0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
 )
 
 func TestClientDeploySubscribeBatch(t *testing.T) {
@@ -102,11 +103,15 @@ func TestClientDeploySubscribeBatch(t *testing.T) {
 		t.Fatal("expected receipt to contain logs")
 	}
 
+	expectedTopic := common.HexToHash(simpleContractEventTopic)
 	logCh := sub.Logs()
 	select {
 	case log := <-logCh:
 		if log.Address != deployResult.ContractAddress {
 			t.Fatalf("unexpected log address %s", log.Address.Hex())
+		}
+		if len(log.Topics) == 0 || log.Topics[0] != expectedTopic {
+			t.Fatalf("unexpected log topics %+v", log.Topics)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for event log")
