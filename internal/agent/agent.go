@@ -10,7 +10,7 @@ import (
 	"OpenMCP-Chain/internal/knowledge"
 	"OpenMCP-Chain/internal/llm"
 	"OpenMCP-Chain/internal/storage/mysql"
-	"OpenMCP-Chain/internal/web3/ethereum"
+	"OpenMCP-Chain/internal/web3"
 )
 
 // TaskRequest 描述了一个简单的智能体任务。
@@ -36,7 +36,7 @@ type TaskResult struct {
 // Agent 协调大模型与区块链交互，是系统的业务核心。
 type Agent struct {
 	llmClient   llm.Client
-	web3Client  *ethereum.Client
+	web3Client  web3.Client
 	taskStorage mysql.TaskRepository
 	memoryDepth int
 	knowledge   knowledge.Provider
@@ -74,7 +74,7 @@ func WithLLMTimeout(timeout time.Duration) Option {
 }
 
 // New 创建一个 Agent。
-func New(llmClient llm.Client, web3Client *ethereum.Client, repo mysql.TaskRepository, opts ...Option) *Agent {
+func New(llmClient llm.Client, web3Client web3.Client, repo mysql.TaskRepository, opts ...Option) *Agent {
 	ag := &Agent{
 		llmClient:   llmClient,
 		web3Client:  web3Client,
@@ -127,7 +127,7 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 		return nil, fmt.Errorf("大模型推理失败: %w", err)
 	}
 
-	chainInfo := ethereum.ChainSnapshot{}
+	chainInfo := web3.ChainSnapshot{}
 	observations := appendObservation(historyObservation, knowledgeObservation)
 	if a.web3Client == nil {
 		observations = "未配置 Web3 客户端"

@@ -31,7 +31,9 @@
     "max_results": 3
   },
   "web3": {
-    "rpc_url": "http://localhost:8545"
+    "rpc_url": "http://localhost:8545",
+    "chain_config": "../configs/chain.yaml",
+    "default_chain": "local-ethereum"
   },
   "runtime": {
     "data_dir": "../data"
