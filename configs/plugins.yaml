@@ -1,0 +1,18 @@
+pluginDir: ./plugins
+defaults:
+  allowedCapabilities:
+    - filesystem
+plugins:
+  memory:
+    enabled: true
+    path: memory-datasource.so
+    config:
+      records:
+        - {"id": 1, "value": "hello"}
+        - {"id": 2, "value": "world"}
+  logger:
+    enabled: true
+    path: logging-processor.so
+    policy:
+      allowedCapabilities:
+        - execution
