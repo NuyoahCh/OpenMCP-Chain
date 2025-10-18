@@ -15,6 +15,10 @@ export default function TaskDetails({ task, isPolling }: TaskDetailsProps) {
   const handleCopy = useCallback(async () => {
     try {
       if (!canCopy || !navigator?.clipboard?.writeText) {
+
+  const handleCopy = useCallback(async () => {
+    try {
+      if (!navigator?.clipboard?.writeText) {
         throw new Error("浏览器暂不支持剪贴板写入");
       }
       await navigator.clipboard.writeText(task.id);
@@ -24,6 +28,7 @@ export default function TaskDetails({ task, isPolling }: TaskDetailsProps) {
       console.warn("复制任务 ID 失败", error);
     }
   }, [canCopy, task.id]);
+  }, [task.id]);
 
   const blockNumber = task.result?.block_number ?? "-";
   const chainId = task.result?.chain_id ?? "-";
@@ -61,6 +66,9 @@ export default function TaskDetails({ task, isPolling }: TaskDetailsProps) {
         </button>
         <button type="button" className="link" onClick={handleCopyPayload} disabled={!canCopy}>
           {copiedPayload ? "JSON 已复制" : "复制详情 JSON"}
+        </button>
+        <button type="button" className="link" onClick={handleCopy}>
+          {copied ? "已复制" : "复制 ID"}
         </button>
         <span>
           <strong>状态:</strong> {statusLabel(task.status)}

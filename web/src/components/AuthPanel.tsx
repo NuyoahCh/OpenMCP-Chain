@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import type { AuthState } from "../api";
 import type { AuthCredentials } from "../hooks/useAuth";
 
@@ -56,6 +57,8 @@ export default function AuthPanel({
     }, 1000);
     return () => clearInterval(timer);
   }, [auth?.expiresAt]);
+
+  const remaining = useMemo(() => formatRemaining(auth?.expiresAt), [auth?.expiresAt]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -124,6 +127,7 @@ export default function AuthPanel({
             </p>
           ) : null}
           <div className="actions" style={{ marginTop: "0.5rem", flexWrap: "wrap" }}>
+          <div className="actions" style={{ marginTop: "0.5rem" }}>
             <button type="button" className="secondary" onClick={handleLogout}>
               退出登录
             </button>

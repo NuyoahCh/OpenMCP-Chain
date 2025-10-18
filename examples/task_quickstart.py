@@ -18,11 +18,11 @@ from typing import Any, Dict
 
 import requests
 
-
+# 构建 API 客户端的基础 URL。
 def _build_client(host: str, port: int) -> str:
     return f"http://{host}:{port}/api/v1/tasks"
 
-
+# 提交任务请求到指定的 API 端点。
 def invoke_task(endpoint: str, goal: str, chain_action: str | None, address: str | None, metadata: Dict[str, Any]) -> None:
     payload: Dict[str, Any] = {"goal": goal}
     if chain_action:
@@ -36,13 +36,13 @@ def invoke_task(endpoint: str, goal: str, chain_action: str | None, address: str
     response.raise_for_status()
     print(json.dumps(response.json(), indent=2, ensure_ascii=False))
 
-
+# 获取任务历史记录。
 def fetch_history(endpoint: str, limit: int) -> None:
     response = requests.get(endpoint, params={"limit": limit}, timeout=10)
     response.raise_for_status()
     print(json.dumps(response.json(), indent=2, ensure_ascii=False))
 
-
+# 解析命令行传入的元数据参数。
 def parse_metadata(pairs: list[str]) -> Dict[str, Any]:
     result: Dict[str, Any] = {}
     for item in pairs:
@@ -52,7 +52,7 @@ def parse_metadata(pairs: list[str]) -> Dict[str, Any]:
         result[key] = value
     return result
 
-
+# 主函数，处理命令行参数并执行相应操作。
 def main() -> None:
     parser = argparse.ArgumentParser(description="OpenMCP-Chain REST API 示例客户端")
     parser.add_argument("action", choices=["invoke", "history"], help="要执行的操作")

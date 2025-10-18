@@ -4,6 +4,7 @@ import type {
   CreateTaskResponse,
   TaskItem
 } from "./types";
+import type { CreateTaskRequest, CreateTaskResponse, TaskItem } from "./types";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:8080";
 const STORAGE_KEY = "openmcp.console.apiBaseUrl";
@@ -133,6 +134,8 @@ if (typeof window !== "undefined") {
 interface RequestOptions extends RequestInit {
   timeout?: number;
   skipAuth?: boolean;
+interface RequestOptions extends RequestInit {
+  timeout?: number;
 }
 
 function buildUrl(path: string): string {
@@ -142,6 +145,7 @@ function buildUrl(path: string): string {
 
 async function fetchWithTimeout(input: string, options: RequestOptions = {}): Promise<Response> {
   const { timeout = DEFAULT_TIMEOUT, signal, skipAuth, ...init } = options;
+  const { timeout = DEFAULT_TIMEOUT, signal, ...init } = options;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   if (signal) {
@@ -166,6 +170,8 @@ async function fetchWithTimeout(input: string, options: RequestOptions = {}): Pr
       clearAuth();
     }
     return response;
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -285,6 +291,21 @@ export function logout(): void {
 
 export async function createTask(payload: CreateTaskRequest): Promise<CreateTaskResponse> {
   const response = await fetchWithTimeout(buildUrl("/api/v1/tasks"), {
+export async function createTask(payload: CreateTaskRequest): Promise<CreateTaskResponse> {
+  const response = await fetchWithTimeout(buildUrl("/api/v1/tasks"), {
+
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") || DEFAULT_BASE_URL;
+
+async function handleResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `请求失败: ${response.status}`);
+  }
+  return (await response.json()) as T;
+}
+
+export async function createTask(payload: CreateTaskRequest): Promise<CreateTaskResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/tasks`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -306,6 +327,17 @@ export async function listTasks(limit = 20): Promise<TaskItem[]> {
 
 export async function verifyApiConnection(): Promise<void> {
   await listTasks(1);
+  return handleResponse<CreateTaskResponse>(response);
+}
+
+export async function fetchTask(id: string): Promise<TaskItem> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/tasks?id=${encodeURIComponent(id)}`);
+  return handleResponse<TaskItem>(response);
+}
+
+export async function listTasks(limit = 20): Promise<TaskItem[]> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/tasks?limit=${limit}`);
+  return handleResponse<TaskItem[]>(response);
 }
 
 export function formatTimestamp(timestamp: number): string {

@@ -12,22 +12,26 @@ import (
 	"time"
 )
 
+// requestKey 用于标识 HTTP 请求的唯一键。
 type requestKey struct {
 	handler string
 	method  string
 	code    string
 }
 
+// errorKey 用于标识 HTTP 请求错误的唯一键。
 type errorKey struct {
 	handler string
 	method  string
 }
 
+// latencyKey 用于标识 HTTP 请求延迟的唯一键。
 type latencyKey struct {
 	handler string
 	method  string
 }
 
+// histogram 用于记录 HTTP 请求的延迟分布情况。
 type histogram struct {
 	buckets []float64
 	counts  []uint64
@@ -35,6 +39,7 @@ type histogram struct {
 	count   uint64
 }
 
+// collector 收集和存储 HTTP 请求的指标数据。
 type collector struct {
 	mu       sync.Mutex
 	requests map[requestKey]uint64
@@ -42,17 +47,19 @@ type collector struct {
 	latency  map[latencyKey]*histogram
 }
 
+// 全局 HTTP 指标收集器实例。
 var httpCollector = &collector{
 	requests: make(map[requestKey]uint64),
 	errors:   make(map[errorKey]uint64),
 	latency:  make(map[latencyKey]*histogram),
 }
 
-// ObserveHTTPRequest records metrics about an HTTP request lifecycle.
+// ObserveHTTPRequest 记录一次 HTTP 请求的指标数据。
 func ObserveHTTPRequest(handler, method string, status int, duration time.Duration) {
 	httpCollector.observe(handler, method, status, duration)
 }
 
+// observe 记录一次 HTTP 请求的指标数据。
 func (c *collector) observe(handler, method string, status int, duration time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -73,6 +80,7 @@ func (c *collector) observe(handler, method string, status int, duration time.Du
 	hist.observe(duration.Seconds())
 }
 
+// newHistogram 创建并初始化一个新的直方图实例。
 func newHistogram() *histogram {
 	buckets := []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10}
 	return &histogram{
@@ -81,6 +89,7 @@ func newHistogram() *histogram {
 	}
 }
 
+// observe 在直方图中记录一个新的观测值。
 func (h *histogram) observe(value float64) {
 	h.count++
 	h.sum += value
@@ -99,7 +108,7 @@ func (h *histogram) observe(value float64) {
 	}
 }
 
-// Handler exposes the metrics in Prometheus text exposition format.
+// Handler 返回一个 HTTP 处理器，用于暴露 Prometheus 格式的指标数据。
 func Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
@@ -107,6 +116,7 @@ func Handler() http.Handler {
 	})
 }
 
+// render 生成 Prometheus 格式的指标数据字符串。
 func (c *collector) render() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -203,6 +213,7 @@ func (c *collector) render() string {
 	return builder.String()
 }
 
+// escape 转义字符串中的特殊字符，确保符合 Prometheus 格式要求。
 func escape(value string) string {
 	value = strings.ReplaceAll(value, "\\", "\\\\")
 	value = strings.ReplaceAll(value, "\"", "\\\"")
@@ -210,11 +221,12 @@ func escape(value string) string {
 	return value
 }
 
+// formatFloat 将浮点数格式化为字符串。
 func formatFloat(value float64) string {
 	return strconv.FormatFloat(value, 'f', -1, 64)
 }
 
-// StartServer launches a standalone HTTP server exposing the /metrics endpoint.
+// StartServer 启动一个 HTTP 服务器以暴露指标数据，直到上下文取消或出现错误。
 func StartServer(ctx context.Context, addr string) error {
 	if addr == "" {
 		return errors.New("metrics address is empty")

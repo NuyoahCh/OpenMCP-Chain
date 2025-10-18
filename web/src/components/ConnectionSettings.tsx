@@ -38,6 +38,7 @@ export default function ConnectionSettings({
   fetchError,
   isOnline,
   connectionType
+  fetchError
 }: ConnectionSettingsProps) {
   const [value, setValue] = useState(baseUrl);
   const [saving, setSaving] = useState(false);

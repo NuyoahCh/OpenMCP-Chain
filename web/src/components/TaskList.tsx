@@ -2,6 +2,7 @@ import { formatTimestamp, statusClassName, statusLabel } from "../api";
 import type { TaskItem, TaskStatus } from "../types";
 
 export type TaskStatusFilter = "all" | TaskStatus;
+import type { TaskItem } from "../types";
 
 interface TaskListProps {
   tasks: TaskItem[];
@@ -34,6 +35,9 @@ export default function TaskList({
   onStatusFilterChange,
   onExport
 }: TaskListProps) {
+}
+
+export default function TaskList({ tasks, onSelect, activeTaskId, loading, error, onRetry }: TaskListProps) {
   if (loading) {
     return (
       <div className="card">
@@ -65,6 +69,9 @@ export default function TaskList({
     );
   }
 
+}
+
+export default function TaskList({ tasks, onSelect, activeTaskId }: TaskListProps) {
   if (!tasks.length) {
     return (
       <div className="card">
@@ -74,6 +81,7 @@ export default function TaskList({
             ? "当前筛选条件下暂无记录，尝试切换其他状态。"
             : "暂无历史记录，提交任务后可查看执行轨迹。"}
         </p>
+        <p className="helper-text">暂无历史记录，提交任务后可查看执行轨迹。</p>
       </div>
     );
   }
@@ -100,6 +108,10 @@ export default function TaskList({
         <button type="button" className="ghost" onClick={onExport} disabled={!tasks.length}>
           导出 JSON
         </button>
+      </div>
+      <div className="section-title" style={{ display: "flex", justifyContent: "space-between" }}>
+        <span>最新任务</span>
+        <span className="helper-text">自动同步最近 {tasks.length} 条记录</span>
       </div>
       <div className="task-list">
         {tasks.map((task) => {
