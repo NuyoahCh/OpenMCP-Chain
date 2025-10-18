@@ -9,12 +9,14 @@ import (
 	"OpenMCP-Chain/internal/llm"
 )
 
+// stubLLM 是 llm.Client 接口的一个简单实现，用于测试目的。
 type stubLLM struct {
 	resp *llm.Response
 	err  error
 	wait time.Duration
 }
 
+// Generate 生成一个响应。
 func (s *stubLLM) Generate(ctx context.Context, req llm.Request) (*llm.Response, error) {
 	if s.wait > 0 {
 		select {
@@ -29,6 +31,7 @@ func (s *stubLLM) Generate(ctx context.Context, req llm.Request) (*llm.Response,
 	return s.resp, nil
 }
 
+// TestAgentExecuteSuccess 测试代理的成功执行路径。
 func TestAgentExecuteSuccess(t *testing.T) {
 	llmClient := &stubLLM{resp: &llm.Response{Thought: "分析", Reply: "结果"}}
 	ag := New(llmClient, nil, nil)
@@ -42,6 +45,7 @@ func TestAgentExecuteSuccess(t *testing.T) {
 	}
 }
 
+// TestAgentExecuteTimeout 测试代理在 LLM 调用超时时的行为。
 func TestAgentExecuteTimeout(t *testing.T) {
 	llmClient := &stubLLM{wait: 50 * time.Millisecond}
 	ag := New(llmClient, nil, nil, WithLLMTimeout(10*time.Millisecond))

@@ -7,25 +7,24 @@ import (
 	loggerpkg "OpenMCP-Chain/pkg/logger"
 )
 
-// MiddlewareConfig controls how the authentication middleware behaves.
+// MiddlewareConfig 配置身份认证中间件的行为。
 type MiddlewareConfig struct {
-	// RequiredPermissions maps HTTP methods to the permissions that must be
-	// present on the authenticated subject. Use "*" for method-agnostic
-	// requirements.
+	// RequiredPermissions 定义每个 HTTP 方法所需的权限列表。
 	RequiredPermissions map[string][]string
-	// AuditEvent overrides the audit event name. Defaults to the request path.
+	// AuditEvent 指定记录审计日志时使用的事件名称。
 	AuditEvent string
 }
 
-// Middleware enforces authentication for the given handler and records audit
-// events through the configured audit logger.
+// Middleware 返回一个 HTTP 中间件，用于处理身份认证和授权。
 func (s *Service) Middleware(cfg MiddlewareConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
+		// 返回实际的中间件处理函数。
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if s == nil || s.mode == ModeDisabled {
 				next.ServeHTTP(w, r)
 				return
 			}
+			// 认证请求。
 			subject, err := s.AuthenticateRequest(r.Context(), r.Header.Get("Authorization"))
 			if err != nil {
 				status := http.StatusUnauthorized
@@ -52,6 +51,7 @@ func (s *Service) Middleware(cfg MiddlewareConfig) func(http.Handler) http.Handl
 				)
 				return
 			}
+			// 授权请求。
 			perms := cfg.RequiredPermissions[r.Method]
 			if len(perms) == 0 {
 				perms = cfg.RequiredPermissions["*"]
@@ -74,6 +74,7 @@ func (s *Service) Middleware(cfg MiddlewareConfig) func(http.Handler) http.Handl
 					return
 				}
 			}
+			// 记录审计日志。
 			start := time.Now()
 			aw := &auditWriter{ResponseWriter: w, status: http.StatusOK}
 			ctx := WithSubject(r.Context(), subject)
@@ -98,11 +99,13 @@ func (s *Service) Middleware(cfg MiddlewareConfig) func(http.Handler) http.Handl
 	}
 }
 
+// auditWriter 是一个包装了 http.ResponseWriter 的结构体，用于捕获响应状态码。
 type auditWriter struct {
 	http.ResponseWriter
 	status int
 }
 
+// WriteHeader 捕获响应状态码并调用底层的 WriteHeader 方法。
 func (w *auditWriter) WriteHeader(code int) {
 	w.status = code
 	w.ResponseWriter.WriteHeader(code)
