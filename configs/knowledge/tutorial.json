@@ -1,7 +1,7 @@
 [
   {
     "title": "账户余额读取基础",
-    "content": "使用 eth_getBalance 可以读取任意地址的余额，单位为十六进制 Wei。生产环境应先确认 RPC 节点同步状态。",
+    "content": "使用 eth_getBalance 可以读取任意地址的余额，单位为十六进制位。生产环境应先确认 RPC 节点同步状态。",
     "keywords": ["balance", "余额", "eth_getBalance"],
     "tags": ["入门", "读取"]
   },

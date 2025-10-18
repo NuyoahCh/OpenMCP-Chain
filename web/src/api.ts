@@ -125,6 +125,19 @@ export function setApiBaseUrl(value?: string | null): string {
 
 export async function createTask(payload: CreateTaskRequest): Promise<CreateTaskResponse> {
   const response = await fetchWithTimeout(buildUrl("/api/v1/tasks"), {
+
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") || DEFAULT_BASE_URL;
+
+async function handleResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `请求失败: ${response.status}`);
+  }
+  return (await response.json()) as T;
+}
+
+export async function createTask(payload: CreateTaskRequest): Promise<CreateTaskResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/tasks`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -146,6 +159,17 @@ export async function listTasks(limit = 20): Promise<TaskItem[]> {
 
 export async function verifyApiConnection(): Promise<void> {
   await listTasks(1);
+  return handleResponse<CreateTaskResponse>(response);
+}
+
+export async function fetchTask(id: string): Promise<TaskItem> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/tasks?id=${encodeURIComponent(id)}`);
+  return handleResponse<TaskItem>(response);
+}
+
+export async function listTasks(limit = 20): Promise<TaskItem[]> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/tasks?limit=${limit}`);
+  return handleResponse<TaskItem[]>(response);
 }
 
 export function formatTimestamp(timestamp: number): string {

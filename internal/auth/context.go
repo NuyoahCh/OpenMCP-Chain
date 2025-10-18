@@ -2,9 +2,10 @@ package auth
 
 import "context"
 
+// subjectKey 是上下文中存储 Subject 的键类型。
 type subjectKey struct{}
 
-// WithSubject attaches the authenticated subject to the provided context.
+// WithSubject 将经过身份验证的主体信息存储到上下文中。
 func WithSubject(ctx context.Context, subject *Subject) context.Context {
 	if subject == nil {
 		return ctx
@@ -13,8 +14,7 @@ func WithSubject(ctx context.Context, subject *Subject) context.Context {
 	return context.WithValue(ctx, subjectKey{}, subject)
 }
 
-// SubjectFromContext extracts the authenticated subject from the context, if
-// present.
+// SubjectFromContext 从上下文中提取经过身份验证的主体信息。
 func SubjectFromContext(ctx context.Context) *Subject {
 	if ctx == nil {
 		return nil

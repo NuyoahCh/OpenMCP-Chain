@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// Config 定义 MySQL 连接的配置参数。
 func openDatabase(ctx context.Context, cfg Config) (*sql.DB, error) {
 	if strings.TrimSpace(cfg.DSN) == "" {
 		return nil, fmt.Errorf("MySQL DSN 不能为空")

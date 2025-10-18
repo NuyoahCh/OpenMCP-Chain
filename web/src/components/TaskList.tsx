@@ -42,6 +42,9 @@ export default function TaskList({ tasks, onSelect, activeTaskId, loading, error
     );
   }
 
+}
+
+export default function TaskList({ tasks, onSelect, activeTaskId }: TaskListProps) {
   if (!tasks.length) {
     return (
       <div className="card">
