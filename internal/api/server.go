@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"OpenMCP-Chain/internal/agent"
+	xerrors "OpenMCP-Chain/internal/errors"
 	"OpenMCP-Chain/internal/observability/metrics"
 	"OpenMCP-Chain/internal/task"
 	"OpenMCP-Chain/pkg/logger"
@@ -122,7 +123,8 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	taskItem, err := s.tasks.Submit(ctx, req)
 	if err != nil {
 		logger.L().Error("任务提交失败", slog.Any("error", err))
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		status := statusFromError(err)
+		http.Error(w, err.Error(), status)
 		return
 	}
 
@@ -147,12 +149,12 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	if id := r.URL.Query().Get("id"); id != "" {
 		taskItem, err := s.tasks.Get(ctx, id)
 		if err != nil {
-			if errors.Is(err, task.ErrTaskNotFound) {
+			if task.IsTaskError(err, task.CodeTaskNotFound) || xerrors.CodeOf(err) == xerrors.CodeNotFound {
 				http.Error(w, "任务不存在", http.StatusNotFound)
 				return
 			}
 			logger.L().Error("查询任务失败", slog.Any("error", err), slog.String("task_id", id))
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, err.Error(), statusFromError(err))
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -170,7 +172,7 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	tasks, err := s.tasks.List(ctx, limit)
 	if err != nil {
 		logger.L().Error("列出任务失败", slog.Any("error", err))
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), statusFromError(err))
 		return
 	}
 
@@ -206,4 +208,25 @@ func withContext(ctx context.Context, handler http.Handler) http.Handler {
 		}
 		handler.ServeHTTP(w, r)
 	})
+}
+
+func statusFromError(err error) int {
+	if err == nil {
+		return http.StatusInternalServerError
+	}
+	code := xerrors.CodeOf(err)
+	switch code {
+	case xerrors.CodeInvalidArgument, task.CodeTaskValidation:
+		return http.StatusBadRequest
+	case xerrors.CodeNotFound, task.CodeTaskNotFound:
+		return http.StatusNotFound
+	case xerrors.CodeConflict, task.CodeTaskConflict:
+		return http.StatusConflict
+	case xerrors.CodeInitializationFailure:
+		return http.StatusServiceUnavailable
+	case xerrors.CodeQueueFailure, task.CodeTaskPublish:
+		return http.StatusBadGateway
+	default:
+		return http.StatusInternalServerError
+	}
 }

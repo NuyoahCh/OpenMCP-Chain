@@ -2,8 +2,7 @@ package task
 
 import (
 	"context"
-	"errors"
-	"fmt"
+	stdErrors "errors"
 	"log/slog"
 	"strings"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"OpenMCP-Chain/internal/agent"
+	xerrors "OpenMCP-Chain/internal/errors"
 	"OpenMCP-Chain/pkg/logger"
 )
 
@@ -32,10 +32,10 @@ func NewService(store Store, producer Producer, maxRetries int) *Service {
 // Submit 创建一个新的任务并推送到队列。
 func (s *Service) Submit(ctx context.Context, req agent.TaskRequest) (*Task, error) {
 	if strings.TrimSpace(req.Goal) == "" {
-		return nil, errors.New("任务目标不能为空")
+		return nil, xerrors.New(CodeTaskValidation, "任务目标不能为空")
 	}
 	if s.store == nil || s.producer == nil {
-		return nil, errors.New("任务服务未初始化")
+		return nil, xerrors.New(xerrors.CodeInitializationFailure, "任务服务未初始化")
 	}
 
 	taskID := strings.TrimSpace(req.ID)
@@ -44,7 +44,7 @@ func (s *Service) Submit(ctx context.Context, req agent.TaskRequest) (*Task, err
 		if err == nil {
 			return task, nil
 		}
-		if !errors.Is(err, ErrTaskNotFound) {
+		if !stdErrors.Is(err, ErrTaskNotFound) {
 			return nil, err
 		}
 	} else {
@@ -61,12 +61,12 @@ func (s *Service) Submit(ctx context.Context, req agent.TaskRequest) (*Task, err
 		MaxRetries:  s.maxRetries,
 	}
 	if err := s.store.Create(ctx, task); err != nil {
-		if errors.Is(err, ErrTaskConflict) {
+		if stdErrors.Is(err, ErrTaskConflict) {
 			existing, getErr := s.store.Get(ctx, taskID)
 			if getErr == nil {
 				return existing, nil
 			}
-			if !errors.Is(getErr, ErrTaskNotFound) {
+			if !stdErrors.Is(getErr, ErrTaskNotFound) {
 				return nil, getErr
 			}
 		}
@@ -74,8 +74,9 @@ func (s *Service) Submit(ctx context.Context, req agent.TaskRequest) (*Task, err
 	}
 	if err := s.producer.Publish(ctx, taskID); err != nil {
 		logger.L().Error("任务入队失败", slog.Any("error", err), slog.String("task_id", taskID))
-		_ = s.store.MarkFailed(ctx, taskID, fmt.Sprintf("发布任务到队列失败: %v", err), true)
-		return nil, err
+		wrapped := xerrors.Wrap(CodeTaskPublish, err, "发布任务到队列失败")
+		_ = s.store.MarkFailed(ctx, taskID, CodeTaskPublish, wrapped.Error(), true)
+		return nil, wrapped
 	}
 	logger.Audit().Info("任务入队成功",
 		slog.String("task_id", taskID),
@@ -89,7 +90,7 @@ func (s *Service) Submit(ctx context.Context, req agent.TaskRequest) (*Task, err
 // Get 返回指定任务的状态。
 func (s *Service) Get(ctx context.Context, id string) (*Task, error) {
 	if s.store == nil {
-		return nil, errors.New("任务存储未初始化")
+		return nil, xerrors.New(xerrors.CodeInitializationFailure, "任务存储未初始化")
 	}
 	return s.store.Get(ctx, id)
 }
@@ -97,7 +98,7 @@ func (s *Service) Get(ctx context.Context, id string) (*Task, error) {
 // List 返回最近的任务列表。
 func (s *Service) List(ctx context.Context, limit int) ([]*Task, error) {
 	if s.store == nil {
-		return nil, errors.New("任务存储未初始化")
+		return nil, xerrors.New(xerrors.CodeInitializationFailure, "任务存储未初始化")
 	}
 	return s.store.List(ctx, limit)
 }

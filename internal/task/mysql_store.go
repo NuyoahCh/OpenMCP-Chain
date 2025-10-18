@@ -3,11 +3,12 @@ package task
 import (
 	"context"
 	"database/sql"
-	"errors"
+	stdErrors "errors"
 	"fmt"
 	"strings"
 	"time"
 
+	xerrors "OpenMCP-Chain/internal/errors"
 	"github.com/go-sql-driver/mysql"
 )
 
@@ -19,12 +20,12 @@ type MySQLStore struct {
 // NewMySQLStore 创建一个新的 MySQLStore。
 func NewMySQLStore(dsn string) (*MySQLStore, error) {
 	if strings.TrimSpace(dsn) == "" {
-		return nil, fmt.Errorf("MySQL DSN 不能为空")
+		return nil, xerrors.New(xerrors.CodeInvalidArgument, "MySQL DSN 不能为空")
 	}
 
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("连接 MySQL 失败: %w", err)
+		return nil, xerrors.Wrap(xerrors.CodeStorageFailure, err, "连接 MySQL 失败")
 	}
 
 	db.SetMaxOpenConns(20)
@@ -32,7 +33,7 @@ func NewMySQLStore(dsn string) (*MySQLStore, error) {
 	db.SetConnMaxLifetime(10 * time.Minute)
 
 	if err := db.Ping(); err != nil {
-		return nil, fmt.Errorf("无法连接到 MySQL: %w", err)
+		return nil, xerrors.Wrap(xerrors.CodeStorageFailure, err, "无法连接到 MySQL")
 	}
 
 	store := &MySQLStore{db: db}
@@ -53,6 +54,7 @@ func (s *MySQLStore) initSchema() error {
         attempts INT NOT NULL DEFAULT 0,
         max_retries INT NOT NULL DEFAULT 3,
         last_error TEXT,
+        error_code VARCHAR(64) DEFAULT '',
         result_thought TEXT,
         result_reply TEXT,
         result_chain_id VARCHAR(66) DEFAULT '',
@@ -65,7 +67,13 @@ func (s *MySQLStore) initSchema() error {
 )`
 
 	if _, err := s.db.Exec(schema); err != nil {
-		return fmt.Errorf("初始化 task_states 表失败: %w", err)
+		return xerrors.Wrap(xerrors.CodeStorageFailure, err, "初始化 task_states 表失败")
+	}
+	if _, err := s.db.Exec(`ALTER TABLE task_states ADD COLUMN error_code VARCHAR(64) DEFAULT '' AFTER last_error`); err != nil {
+		var mysqlErr *mysql.MySQLError
+		if !(stdErrors.As(err, &mysqlErr) && mysqlErr.Number == 1060) {
+			return xerrors.Wrap(xerrors.CodeStorageFailure, err, "扩展 task_states.error_code 失败")
+		}
 	}
 	return nil
 }
@@ -73,10 +81,10 @@ func (s *MySQLStore) initSchema() error {
 // Create 插入新的任务记录。
 func (s *MySQLStore) Create(ctx context.Context, task *Task) error {
 	if task == nil {
-		return errors.New("task 不能为空")
+		return xerrors.New(xerrors.CodeInvalidArgument, "task 不能为空")
 	}
 	if strings.TrimSpace(task.ID) == "" {
-		return errors.New("任务 ID 不能为空")
+		return xerrors.New(xerrors.CodeInvalidArgument, "任务 ID 不能为空")
 	}
 
 	now := time.Now().Unix()
@@ -84,8 +92,8 @@ func (s *MySQLStore) Create(ctx context.Context, task *Task) error {
 	task.UpdatedAt = now
 
 	const stmt = `INSERT INTO task_states
-        (id, goal, chain_action, address, status, attempts, max_retries, last_error, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, ?)`
+        (id, goal, chain_action, address, status, attempts, max_retries, last_error, error_code, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, '', '', ?, ?)`
 
 	_, err := s.db.ExecContext(ctx, stmt,
 		task.ID,
@@ -100,17 +108,17 @@ func (s *MySQLStore) Create(ctx context.Context, task *Task) error {
 	)
 	if err != nil {
 		var mysqlErr *mysql.MySQLError
-		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
+		if stdErrors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
 			return ErrTaskConflict
 		}
-		return fmt.Errorf("插入任务失败: %w", err)
+		return xerrors.Wrap(xerrors.CodeStorageFailure, err, "插入任务失败")
 	}
 	return nil
 }
 
 // Get 查询指定任务。
 func (s *MySQLStore) Get(ctx context.Context, id string) (*Task, error) {
-	const stmt = `SELECT id, goal, chain_action, address, status, attempts, max_retries, last_error,
+	const stmt = `SELECT id, goal, chain_action, address, status, attempts, max_retries, last_error, error_code,
         result_thought, result_reply, result_chain_id, result_block_number, result_observations, created_at, updated_at
         FROM task_states WHERE id = ?`
 
@@ -129,6 +137,7 @@ func (s *MySQLStore) Get(ctx context.Context, id string) (*Task, error) {
 		&task.Attempts,
 		&task.MaxRetries,
 		&task.LastError,
+		&task.ErrorCode,
 		&result.Thought,
 		&result.Reply,
 		&result.ChainID,
@@ -137,10 +146,10 @@ func (s *MySQLStore) Get(ctx context.Context, id string) (*Task, error) {
 		&task.CreatedAt,
 		&task.UpdatedAt,
 	); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if stdErrors.Is(err, sql.ErrNoRows) {
 			return nil, ErrTaskNotFound
 		}
-		return nil, fmt.Errorf("查询任务失败: %w", err)
+		return nil, xerrors.Wrap(xerrors.CodeStorageFailure, err, "查询任务失败")
 	}
 
 	if result.Thought != "" || result.Reply != "" || result.ChainID != "" || result.BlockNumber != "" || result.Observations != "" {
@@ -155,7 +164,7 @@ func (s *MySQLStore) Get(ctx context.Context, id string) (*Task, error) {
 
 // Claim 将任务标记为运行中并返回最新状态。
 func (s *MySQLStore) Claim(ctx context.Context, id string) (*Task, error) {
-	const updateStmt = `UPDATE task_states SET status = ?, attempts = attempts + 1, updated_at = ?, last_error = ''
+	const updateStmt = `UPDATE task_states SET status = ?, attempts = attempts + 1, updated_at = ?, last_error = '', error_code = ''
         WHERE id = ? AND status IN (?, ?) AND attempts < max_retries`
 
 	now := time.Now().Unix()
@@ -167,11 +176,11 @@ func (s *MySQLStore) Claim(ctx context.Context, id string) (*Task, error) {
 		StatusFailed,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("更新任务状态失败: %w", err)
+		return nil, xerrors.Wrap(xerrors.CodeStorageFailure, err, "更新任务状态失败")
 	}
 	affected, err := res.RowsAffected()
 	if err != nil {
-		return nil, fmt.Errorf("获取影响行数失败: %w", err)
+		return nil, xerrors.Wrap(xerrors.CodeStorageFailure, err, "获取影响行数失败")
 	}
 	if affected == 0 {
 		task, getErr := s.Get(ctx, id)
@@ -200,7 +209,7 @@ func (s *MySQLStore) Claim(ctx context.Context, id string) (*Task, error) {
 // MarkSucceeded 将任务标记为成功。
 func (s *MySQLStore) MarkSucceeded(ctx context.Context, id string, result ExecutionResult) error {
 	const stmt = `UPDATE task_states SET status = ?, result_thought = ?, result_reply = ?, result_chain_id = ?,
-        result_block_number = ?, result_observations = ?, updated_at = ?, last_error = '' WHERE id = ?`
+        result_block_number = ?, result_observations = ?, updated_at = ?, last_error = '', error_code = '' WHERE id = ?`
 
 	now := time.Now().Unix()
 	res, err := s.db.ExecContext(ctx, stmt,
@@ -214,7 +223,7 @@ func (s *MySQLStore) MarkSucceeded(ctx context.Context, id string, result Execut
 		id,
 	)
 	if err != nil {
-		return fmt.Errorf("标记任务成功失败: %w", err)
+		return xerrors.Wrap(xerrors.CodeStorageFailure, err, "标记任务成功失败")
 	}
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return ErrTaskNotFound
@@ -223,8 +232,8 @@ func (s *MySQLStore) MarkSucceeded(ctx context.Context, id string, result Execut
 }
 
 // MarkFailed 将任务标记为失败，并在必要时终止重试。
-func (s *MySQLStore) MarkFailed(ctx context.Context, id string, lastError string, terminal bool) error {
-	const stmt = `UPDATE task_states SET status = ?, last_error = ?, updated_at = ? WHERE id = ?`
+func (s *MySQLStore) MarkFailed(ctx context.Context, id string, code xerrors.Code, lastError string, terminal bool) error {
+	const stmt = `UPDATE task_states SET status = ?, last_error = ?, error_code = ?, updated_at = ? WHERE id = ?`
 
 	status := StatusFailed
 	if terminal {
@@ -234,11 +243,12 @@ func (s *MySQLStore) MarkFailed(ctx context.Context, id string, lastError string
 	res, err := s.db.ExecContext(ctx, stmt,
 		status,
 		lastError,
+		string(code),
 		now,
 		id,
 	)
 	if err != nil {
-		return fmt.Errorf("标记任务失败失败: %w", err)
+		return xerrors.Wrap(xerrors.CodeStorageFailure, err, "标记任务失败失败")
 	}
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return ErrTaskNotFound
@@ -251,7 +261,7 @@ func (s *MySQLStore) List(ctx context.Context, limit int) ([]*Task, error) {
 	if limit <= 0 {
 		limit = 20
 	}
-	const stmt = `SELECT id, goal, chain_action, address, status, attempts, max_retries, last_error,
+	const stmt = `SELECT id, goal, chain_action, address, status, attempts, max_retries, last_error, error_code,
         result_thought, result_reply, result_chain_id, result_block_number, result_observations, created_at, updated_at
         FROM task_states ORDER BY created_at DESC LIMIT ?`
 
@@ -274,6 +284,7 @@ func (s *MySQLStore) List(ctx context.Context, limit int) ([]*Task, error) {
 			&task.Attempts,
 			&task.MaxRetries,
 			&task.LastError,
+			&task.ErrorCode,
 			&result.Thought,
 			&result.Reply,
 			&result.ChainID,
@@ -282,7 +293,7 @@ func (s *MySQLStore) List(ctx context.Context, limit int) ([]*Task, error) {
 			&task.CreatedAt,
 			&task.UpdatedAt,
 		); err != nil {
-			return nil, fmt.Errorf("解析任务记录失败: %w", err)
+			return nil, xerrors.Wrap(xerrors.CodeStorageFailure, err, "解析任务记录失败")
 		}
 		if result.Thought != "" || result.Reply != "" || result.ChainID != "" || result.BlockNumber != "" || result.Observations != "" {
 			task.Result = &result
@@ -291,7 +302,7 @@ func (s *MySQLStore) List(ctx context.Context, limit int) ([]*Task, error) {
 		tasks = append(tasks, &taskCopy)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("遍历任务失败: %w", err)
+		return nil, xerrors.Wrap(xerrors.CodeStorageFailure, err, "遍历任务失败")
 	}
 	return tasks, nil
 }
@@ -303,3 +314,5 @@ func (s *MySQLStore) Close() error {
 	}
 	return s.db.Close()
 }
+
+var _ Store = (*MySQLStore)(nil)
