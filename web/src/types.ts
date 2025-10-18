@@ -1,6 +1,11 @@
 export type TaskStatus = "pending" | "running" | "succeeded" | "failed";
 
 export interface ExecutionResult {
+  thought?: string | null;
+  reply?: string | null;
+  chain_id?: string | null;
+  block_number?: string | number | null;
+  observations?: string | null;
   thought: string;
   reply: string;
   chain_id: string;
@@ -11,6 +16,13 @@ export interface ExecutionResult {
 export interface TaskItem {
   id: string;
   goal: string;
+  chain_action?: string | null;
+  address?: string | null;
+  status: TaskStatus;
+  attempts: number;
+  max_retries: number;
+  last_error?: string | null;
+  error_code?: string | null;
   chain_action: string;
   address: string;
   status: TaskStatus;

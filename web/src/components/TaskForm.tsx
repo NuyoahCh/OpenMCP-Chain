@@ -3,6 +3,7 @@ import type { CreateTaskRequest } from "../types";
 
 interface TaskFormProps {
   onSubmit: (payload: CreateTaskRequest) => Promise<void>;
+  submitting?: boolean;
   loading?: boolean;
 }
 
@@ -12,6 +13,13 @@ const CHAIN_TEMPLATES: Array<{ label: string; value: string }> = [
   { label: "查询最新区块 (eth_getBlockByNumber)", value: "eth_getBlockByNumber" }
 ];
 
+const QUICK_GOALS = [
+  "分析账户资产组合，并输出风险提示",
+  "监控最新区块事件并总结关键动态",
+  "生成链上地址的近期 Gas 消耗速览"
+];
+
+export default function TaskForm({ onSubmit, submitting }: TaskFormProps) {
 export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
   const [goal, setGoal] = useState("查询账户余额");
   const [chainAction, setChainAction] = useState("");
@@ -26,6 +34,13 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
     ];
     return suggestions[Math.floor(Math.random() * suggestions.length)];
   }, []);
+
+  const submitDisabled = submitting || !goal.trim();
+
+  const applyQuickGoal = (text: string) => {
+    setGoal(text);
+    setErrors(null);
+  };
   const [metadata, setMetadata] = useState(
     () => JSON.stringify({ project: "demo" }, null, 2)
   );
@@ -51,6 +66,16 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
       setErrors("请填写任务目标");
       return;
     }
+    const trimmedAddress = address.trim();
+    if (trimmedAddress && !/^0x[a-fA-F0-9]{40}$/.test(trimmedAddress)) {
+      setErrors("请输入合法的以太坊地址");
+      return;
+    }
+    const payload: CreateTaskRequest = {
+      goal: goal.trim(),
+      chain_action: chainAction || undefined,
+      address: trimmedAddress || undefined
+    };
     const payload: CreateTaskRequest = {
       goal: goal.trim(),
       chain_action: chainAction || undefined,
@@ -74,6 +99,18 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
       <p className="helper-text" style={{ marginTop: "-0.35rem", marginBottom: "1.35rem" }}>
         描述你的目标，可选择需要的链上操作，提交后系统会自动排队执行。
       </p>
+      <div className="quick-goals">
+        {QUICK_GOALS.map((item) => (
+          <button
+            key={item}
+            type="button"
+            className="chip"
+            onClick={() => applyQuickGoal(item)}
+          >
+            {item}
+          </button>
+        ))}
+      </div>
       <div className="field-grid">
         <div className="input-field" style={{ gridColumn: "1 / -1" }}>
           <label htmlFor="goal">任务目标</label>
@@ -145,6 +182,7 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
       ) : null}
       <div className="actions" style={{ marginTop: "1.5rem" }}>
         <button type="submit" className="primary" disabled={submitDisabled}>
+          {submitting ? "提交中..." : "提交任务"}
           {loading ? "提交中..." : "提交任务"}
         </button>
       </div>

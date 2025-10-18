@@ -5,6 +5,43 @@ interface TaskListProps {
   tasks: TaskItem[];
   onSelect?: (task: TaskItem) => void;
   activeTaskId?: string | null;
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
+}
+
+export default function TaskList({ tasks, onSelect, activeTaskId, loading, error, onRetry }: TaskListProps) {
+  if (loading) {
+    return (
+      <div className="card">
+        <h2 className="section-title">最新任务</h2>
+        <div className="task-list skeleton">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="task-card skeleton-card">
+              <div className="skeleton-line" style={{ width: "65%" }} />
+              <div className="skeleton-line" style={{ width: "85%" }} />
+              <div className="skeleton-line" style={{ width: "45%" }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="card">
+        <h2 className="section-title">最新任务</h2>
+        <p className="helper-text" style={{ color: "#fda4af" }}>{error}</p>
+        <div className="actions" style={{ marginTop: "1rem" }}>
+          <button type="button" className="secondary" onClick={() => onRetry?.()}>
+            重试同步
+          </button>
+        </div>
+      </div>
+    );
+  }
+
 }
 
 export default function TaskList({ tasks, onSelect, activeTaskId }: TaskListProps) {
