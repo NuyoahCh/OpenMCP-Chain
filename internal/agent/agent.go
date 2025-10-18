@@ -152,6 +152,7 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 		observations = "未执行任何链上操作"
 	}
 
+	now := time.Now().Unix()
 	result := &TaskResult{
 		Goal:         req.Goal,
 		ChainAction:  req.ChainAction,
@@ -161,11 +162,11 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 		ChainID:      chainInfo.ChainID,
 		BlockNumber:  chainInfo.BlockNumber,
 		Observations: observations,
-		CreatedAt:    time.Now().Unix(),
+		CreatedAt:    now,
 	}
 
 	if a.taskStorage != nil {
-		if err := a.taskStorage.Save(ctx, mysql.TaskRecord{
+		record := &mysql.TaskRecord{
 			Goal:        req.Goal,
 			ChainAction: req.ChainAction,
 			Address:     req.Address,
@@ -174,8 +175,10 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 			ChainID:     result.ChainID,
 			BlockNumber: result.BlockNumber,
 			Observes:    result.Observations,
-			CreatedAt:   result.CreatedAt,
-		}); err != nil {
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		if err := a.taskStorage.Create(ctx, record); err != nil {
 			return nil, fmt.Errorf("保存任务记录失败: %w", err)
 		}
 	}

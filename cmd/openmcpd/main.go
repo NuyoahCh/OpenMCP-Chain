@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"OpenMCP-Chain/internal/agent"
 	"OpenMCP-Chain/internal/api"
@@ -63,7 +64,13 @@ func run(ctx context.Context) error {
 		}
 		taskRepo = repo
 	case "mysql":
-		repo, err := mysql.NewSQLTaskRepository(cfg.Storage.TaskStore.DSN)
+		repo, err := mysql.NewSQLTaskRepository(ctx, mysql.Config{
+			DSN:             cfg.Storage.TaskStore.DSN,
+			MaxOpenConns:    cfg.Storage.TaskStore.MaxOpenConns,
+			MaxIdleConns:    cfg.Storage.TaskStore.MaxIdleConns,
+			ConnMaxLifetime: time.Duration(cfg.Storage.TaskStore.ConnMaxLifetimeSeconds) * time.Second,
+			ConnMaxIdleTime: time.Duration(cfg.Storage.TaskStore.ConnMaxIdleTimeSeconds) * time.Second,
+		})
 		if err != nil {
 			return err
 		}

@@ -33,8 +33,12 @@ type StorageConfig struct {
 
 // TaskStoreConfig 目前提供内存实现，后续可以切换到真正的 MySQL。
 type TaskStoreConfig struct {
-	Driver string `json:"driver"`
-	DSN    string `json:"dsn"`
+	Driver                 string `json:"driver"`
+	DSN                    string `json:"dsn"`
+	MaxOpenConns           int    `json:"max_open_conns"`
+	MaxIdleConns           int    `json:"max_idle_conns"`
+	ConnMaxLifetimeSeconds int    `json:"conn_max_lifetime_seconds"`
+	ConnMaxIdleTimeSeconds int    `json:"conn_max_idle_time_seconds"`
 }
 
 // LLMConfig 用于配置大模型推理的调用方式。
@@ -128,6 +132,18 @@ func (c *Config) applyDefaults(baseDir string) {
 
 	if c.Storage.TaskStore.Driver == "" {
 		c.Storage.TaskStore.Driver = "memory"
+	}
+	if c.Storage.TaskStore.MaxOpenConns <= 0 {
+		c.Storage.TaskStore.MaxOpenConns = 20
+	}
+	if c.Storage.TaskStore.MaxIdleConns <= 0 {
+		c.Storage.TaskStore.MaxIdleConns = 10
+	}
+	if c.Storage.TaskStore.ConnMaxLifetimeSeconds <= 0 {
+		c.Storage.TaskStore.ConnMaxLifetimeSeconds = 1800
+	}
+	if c.Storage.TaskStore.ConnMaxIdleTimeSeconds < 0 {
+		c.Storage.TaskStore.ConnMaxIdleTimeSeconds = 0
 	}
 
 	if c.LLM.Provider == "" {
