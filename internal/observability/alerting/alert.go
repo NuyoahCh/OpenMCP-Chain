@@ -14,6 +14,7 @@ import (
 // Channel 表示通知渠道。
 type Channel string
 
+// 支持的通知渠道
 const (
 	ChannelEmail    Channel = "email"
 	ChannelDingTalk Channel = "dingtalk"

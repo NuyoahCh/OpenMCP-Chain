@@ -12,14 +12,17 @@ import (
 	"OpenMCP-Chain/deploy/migrations"
 )
 
+// embeddedMigrations 包含嵌入的迁移文件系统。
 var embeddedMigrations fs.FS = migrations.Files
 
+// migrationFile 表示一个数据库迁移文件及其内容。
 type migrationFile struct {
 	version    string
 	name       string
 	statements []string
 }
 
+// Migrate 执行数据库迁移。
 func runMigrations(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
         version VARCHAR(32) NOT NULL PRIMARY KEY,

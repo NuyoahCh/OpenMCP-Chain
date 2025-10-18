@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Common errors returned by the authentication subsystem.
+// 预定义的身份认证错误。
 var (
 	ErrDisabled           = errors.New("authentication disabled")
 	ErrInvalidCredentials = errors.New("invalid credentials")
@@ -18,20 +18,18 @@ var (
 	ErrSubjectRevoked     = errors.New("subject is disabled")
 )
 
-// Store abstracts the persistent user catalogue used by the authentication
-// service. Implementations must be safe for concurrent use.
+// Store 定义身份认证存储的接口。
 type Store interface {
 	FindUserByUsername(ctx context.Context, username string) (*User, error)
 	LoadSubject(ctx context.Context, userID int64) (*Subject, error)
 }
 
-// SeedWriter is implemented by stores that can upsert seed users, roles and
-// permissions for bootstrapping.
+// SeedWriter 定义应用种子数据以初始化存储的接口。
 type SeedWriter interface {
 	ApplySeed(ctx context.Context, seed Seed) error
 }
 
-// User represents a persisted account with credentials.
+// User 表示存储中的用户记录。
 type User struct {
 	ID           int64
 	Username     string
@@ -39,8 +37,7 @@ type User struct {
 	Disabled     bool
 }
 
-// Subject captures the information embedded in access tokens and passed to
-// request handlers via context.
+// Subject 表示经过身份验证的主体信息。
 type Subject struct {
 	ID          int64
 	Username    string
@@ -51,7 +48,7 @@ type Subject struct {
 	permissionsSet map[string]struct{}
 }
 
-// normalise prepares the lookup set for permission checks.
+// normalise 初始化 Subject 的内部缓存。
 func (s *Subject) normalise() {
 	if s == nil {
 		return
@@ -64,12 +61,12 @@ func (s *Subject) normalise() {
 	}
 }
 
-// Normalise ensures internal caches are populated for exported use cases.
+// Normalise 对外暴露的规范化方法。
 func (s *Subject) Normalise() {
 	s.normalise()
 }
 
-// HasPermission reports whether the subject has the specified permission.
+// HasPermission 检查主体是否具有指定的权限。
 func (s *Subject) HasPermission(permission string) bool {
 	if s == nil {
 		return false
@@ -79,7 +76,7 @@ func (s *Subject) HasPermission(permission string) bool {
 	return ok
 }
 
-// Authorize ensures the subject has all required permissions.
+// Authorize 验证主体是否具有所有指定的权限。
 func (s *Subject) Authorize(perms ...string) error {
 	if s == nil {
 		return ErrInvalidToken
@@ -98,8 +95,7 @@ func (s *Subject) Authorize(perms ...string) error {
 	return nil
 }
 
-// Clone creates a shallow copy of the subject suitable for embedding in
-// tokens.
+// Clone 创建并返回主体的深拷贝，包括角色和权限切片的副本，以防止外部修改
 func (s *Subject) Clone() *Subject {
 	if s == nil {
 		return nil
@@ -115,7 +111,7 @@ func (s *Subject) Clone() *Subject {
 	return clone
 }
 
-// TokenRequest describes the payload accepted by the token issuance endpoint.
+// TokenRequest 是 OAuth 令牌请求的结构。
 type TokenRequest struct {
 	GrantType string   `json:"grant_type"`
 	Username  string   `json:"username"`
@@ -123,7 +119,7 @@ type TokenRequest struct {
 	Scope     []string `json:"scope"`
 }
 
-// TokenPair contains the issued access and refresh tokens.
+// TokenPair 表示一对访问令牌和刷新令牌。
 type TokenPair struct {
 	AccessToken      string   `json:"access_token"`
 	ExpiresIn        int64    `json:"expires_in"`
@@ -134,7 +130,7 @@ type TokenPair struct {
 	GrantedScopes    []string `json:"scope,omitempty"`
 }
 
-// Config configures the authentication service.
+// / Config 定义身份认证服务的配置参数。
 type Config struct {
 	Mode  Mode
 	JWT   JWTOptions
@@ -142,16 +138,17 @@ type Config struct {
 	Seeds []Seed
 }
 
-// Mode enumerates the supported authentication providers.
+// Mode 定义身份认证服务的工作模式。
 type Mode string
 
+// 支持的身份认证模式。
 const (
 	ModeDisabled Mode = "disabled"
 	ModeJWT      Mode = "jwt"
 	ModeOAuth    Mode = "oauth"
 )
 
-// JWTOptions contains parameters for local JWT issuance.
+// JWTOptions 是 JWT 身份认证的配置选项。
 type JWTOptions struct {
 	Secret     string
 	Issuer     string
@@ -160,7 +157,7 @@ type JWTOptions struct {
 	RefreshTTL int64
 }
 
-// OAuthOptions contains settings for delegating auth to an OAuth2 provider.
+// OAuthOptions 是 OAuth 身份认证的配置选项。
 type OAuthOptions struct {
 	TokenURL         string
 	IntrospectionURL string
@@ -171,7 +168,7 @@ type OAuthOptions struct {
 	UsernameClaim    string
 }
 
-// Seed defines the initial accounts and permissions to bootstrap.
+// Seed 定义用于初始化身份认证存储的种子数据结构。
 type Seed struct {
 	Username    string
 	Password    string

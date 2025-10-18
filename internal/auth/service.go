@@ -20,6 +20,7 @@ import (
 	"OpenMCP-Chain/pkg/logger"
 )
 
+// 常量定义。
 const (
 	tokenTypeAccess   = "access"
 	tokenTypeRefresh  = "refresh"
@@ -28,9 +29,10 @@ const (
 	passwordSaltBytes = 16
 )
 
+// encodedJWTHeader 是编码后的 JWT 头部。
 var encodedJWTHeader = base64.RawURLEncoding.EncodeToString([]byte(jwtHeaderJSON))
 
-// Service coordinates authentication and authorization for HTTP endpoints.
+// Service 负责 HTTP 端点的身份验证和授权。
 type Service struct {
 	mode  Mode
 	store Store
@@ -39,8 +41,7 @@ type Service struct {
 	audit *slog.Logger
 }
 
-// NewService constructs an authentication service based on the supplied
-// configuration and backing store.
+// NewService 构造身份认证服务实例。
 func NewService(ctx context.Context, cfg Config, store Store) (*Service, error) {
 	mode := Mode(strings.ToLower(string(cfg.Mode)))
 	svc := &Service{
@@ -97,7 +98,7 @@ func NewService(ctx context.Context, cfg Config, store Store) (*Service, error) 
 	return svc, nil
 }
 
-// Mode returns the configured authentication mode.
+// Mode 返回当前身份认证服务的工作模式。
 func (s *Service) Mode() Mode {
 	if s == nil {
 		return ModeDisabled
@@ -105,7 +106,7 @@ func (s *Service) Mode() Mode {
 	return s.mode
 }
 
-// Authenticate issues tokens for the provided credentials, if supported by the
+// Authenticate 根据提供的令牌请求进行身份验证，并返回相应的令牌对。
 // current mode.
 func (s *Service) Authenticate(ctx context.Context, req TokenRequest) (*TokenPair, error) {
 	if s == nil || s.mode == ModeDisabled {
@@ -121,6 +122,7 @@ func (s *Service) Authenticate(ctx context.Context, req TokenRequest) (*TokenPai
 	}
 }
 
+// authenticateJWT 处理基于 JWT 的身份验证请求。
 func (s *Service) authenticateJWT(ctx context.Context, req TokenRequest) (*TokenPair, error) {
 	grant := strings.TrimSpace(strings.ToLower(req.GrantType))
 	if grant == "" {
@@ -161,6 +163,7 @@ func (s *Service) authenticateJWT(ctx context.Context, req TokenRequest) (*Token
 	return pair, nil
 }
 
+// authenticateOAuth 处理基于 OAuth 的身份验证请求。
 func (s *Service) authenticateOAuth(ctx context.Context, req TokenRequest) (*TokenPair, error) {
 	if s.oauth == nil {
 		return nil, errors.New("oauth client not configured")
@@ -168,7 +171,7 @@ func (s *Service) authenticateOAuth(ctx context.Context, req TokenRequest) (*Tok
 	return s.oauth.exchange(ctx, req)
 }
 
-// AuthenticateRequest validates the provided bearer token and returns the
+// AuthenticateRequest 验证传入请求的授权头，并返回相应的主体信息。
 // associated subject.
 func (s *Service) AuthenticateRequest(ctx context.Context, authorization string) (*Subject, error) {
 	if s == nil || s.mode == ModeDisabled {
@@ -192,6 +195,7 @@ func (s *Service) AuthenticateRequest(ctx context.Context, authorization string)
 	}
 }
 
+// verifyJWT 验证 JWT 令牌并返回相应的主体信息。
 func (s *Service) verifyJWT(ctx context.Context, token string) (*Subject, error) {
 	if s.jwt == nil {
 		return nil, errors.New("jwt manager not initialised")
@@ -221,6 +225,7 @@ func (s *Service) verifyJWT(ctx context.Context, token string) (*Subject, error)
 	return subject, nil
 }
 
+// verifyOAuth 验证 OAuth 令牌并返回相应的主体信息。
 func (s *Service) verifyOAuth(ctx context.Context, token string) (*Subject, error) {
 	if s.oauth == nil {
 		return nil, errors.New("oauth client not configured")
@@ -273,7 +278,7 @@ func (s *Service) verifyOAuth(ctx context.Context, token string) (*Subject, erro
 	return subject, nil
 }
 
-// jwtManager encapsulates token signing and verification.
+// jwtManager 负责 JWT 令牌的签名和验证。
 type jwtManager struct {
 	secret     []byte
 	issuer     string
@@ -282,6 +287,7 @@ type jwtManager struct {
 	refreshTTL time.Duration
 }
 
+// jwtClaims 定义 JWT 令牌的声明结构。
 type jwtClaims struct {
 	Username    string   `json:"username,omitempty"`
 	Roles       []string `json:"roles,omitempty"`
@@ -294,6 +300,7 @@ type jwtClaims struct {
 	ExpiresAt   int64    `json:"exp,omitempty"`
 }
 
+// Generate 生成访问令牌和刷新令牌对。
 func (m *jwtManager) Generate(subject *Subject) (*TokenPair, error) {
 	if subject == nil {
 		return nil, errors.New("subject required")
@@ -341,6 +348,7 @@ func (m *jwtManager) Generate(subject *Subject) (*TokenPair, error) {
 	}, nil
 }
 
+// sign 使用 HMAC-SHA256 签名 JWT 令牌。
 func (m *jwtManager) sign(claims jwtClaims) (string, error) {
 	payloadBytes, err := json.Marshal(claims)
 	if err != nil {
@@ -352,6 +360,7 @@ func (m *jwtManager) sign(claims jwtClaims) (string, error) {
 	return token, nil
 }
 
+// signature 计算 JWT 令牌的签名部分。
 func (m *jwtManager) signature(header, payload string) []byte {
 	mac := hmac.New(sha256.New, m.secret)
 	mac.Write([]byte(header))
@@ -360,6 +369,7 @@ func (m *jwtManager) signature(header, payload string) []byte {
 	return mac.Sum(nil)
 }
 
+// Verify 验证 JWT 令牌的有效性并返回其声明。
 func (m *jwtManager) Verify(token string) (*jwtClaims, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
@@ -410,11 +420,13 @@ func (m *jwtManager) Verify(token string) (*jwtClaims, error) {
 	return &claims, nil
 }
 
+// oauthClient 负责与 OAuth 2.0 提供者交互以进行令牌交换和验证。
 type oauthClient struct {
 	config OAuthOptions
 	client *http.Client
 }
 
+// oauthTokenResponse 定义 OAuth 令牌响应的结构。
 type oauthTokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	ExpiresIn    int64  `json:"expires_in"`
@@ -423,6 +435,7 @@ type oauthTokenResponse struct {
 	TokenType    string `json:"token_type"`
 }
 
+// introspectionResponse 定义 OAuth 令牌内省响应的结构。
 type introspectionResponse struct {
 	Active    bool   `json:"active"`
 	Subject   string `json:"sub"`
@@ -434,6 +447,7 @@ type introspectionResponse struct {
 	TokenType string `json:"token_type"`
 }
 
+// oauthSubject 定义通过 OAuth 内省获得的主体信息。
 type oauthSubject struct {
 	Active      bool
 	Subject     string
@@ -442,6 +456,7 @@ type oauthSubject struct {
 	Permissions []string
 }
 
+// newOAuthClient 创建并配置一个新的 OAuth 客户端实例。
 func newOAuthClient(cfg OAuthOptions) (*oauthClient, error) {
 	if strings.TrimSpace(cfg.IntrospectionURL) == "" {
 		return nil, errors.New("oauth introspection_url must be configured")
@@ -455,6 +470,7 @@ func newOAuthClient(cfg OAuthOptions) (*oauthClient, error) {
 	}, nil
 }
 
+// exchange 处理 OAuth 令牌交换请求。
 func (c *oauthClient) exchange(ctx context.Context, req TokenRequest) (*TokenPair, error) {
 	if strings.TrimSpace(c.config.TokenURL) == "" {
 		return nil, errors.New("oauth token_url must be configured for issuance")
@@ -509,6 +525,7 @@ func (c *oauthClient) exchange(ctx context.Context, req TokenRequest) (*TokenPai
 	}, nil
 }
 
+// introspect 验证 OAuth 令牌并返回相应的主体信息。
 func (c *oauthClient) introspect(ctx context.Context, token string) (*oauthSubject, error) {
 	form := url.Values{}
 	form.Set("token", token)
@@ -544,6 +561,7 @@ func (c *oauthClient) introspect(ctx context.Context, token string) (*oauthSubje
 	}, nil
 }
 
+// pickClaim 从内省响应中提取指定的声明值。
 func pickClaim(resp introspectionResponse, claim string) string {
 	switch strings.ToLower(claim) {
 	case "username":
@@ -560,7 +578,7 @@ func pickClaim(resp introspectionResponse, claim string) string {
 	}
 }
 
-// HashPassword hashes the plain text password using HMAC-SHA256 with a random salt.
+// HashPassword 对给定的密码进行哈希处理并返回哈希值。
 func HashPassword(password string) (string, error) {
 	return hashPassword(password)
 }
@@ -579,6 +597,7 @@ func hashPassword(password string) (string, error) {
 	return encodedSalt + ":" + encodedDigest, nil
 }
 
+// verifyPassword 验证给定的密码是否与哈希值匹配。
 func verifyPassword(hashed, password string) bool {
 	if hashed == "" {
 		return false

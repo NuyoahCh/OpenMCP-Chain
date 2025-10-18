@@ -46,7 +46,7 @@ func WithMetrics(enabled bool) Option {
 	}
 }
 
-// WithAuthService wires the authentication and authorization service.
+// WithAuthService 设置身份认证服务。
 func WithAuthService(authn *auth.Service) Option {
 	return func(s *Server) {
 		s.auth = authn
@@ -55,8 +55,10 @@ func WithAuthService(authn *auth.Service) Option {
 
 // Start 启动 HTTP 服务，直到上下文取消或出现错误。
 func (s *Server) Start(ctx context.Context) error {
+	// 设置路由和中间件。
 	mux := http.NewServeMux()
 	taskHandler := http.HandlerFunc(s.handleTasks)
+	// 应用身份认证中间件（如果配置了认证服务）。
 	if s.auth != nil && s.auth.Mode() != auth.ModeDisabled {
 		taskHandler = s.auth.Middleware(auth.MiddlewareConfig{
 			RequiredPermissions: map[string][]string{
@@ -66,18 +68,22 @@ func (s *Server) Start(ctx context.Context) error {
 			AuditEvent: "tasks",
 		})(taskHandler).(http.HandlerFunc)
 	}
+	// 应用请求日志中间件。
 	mux.Handle("/api/v1/tasks", s.instrument("tasks", taskHandler))
 	mux.Handle("/api/v1/auth/token", s.instrument("auth_token", http.HandlerFunc(s.handleAuthToken)))
+	// 如果启用指标采集，注册指标处理器。
 	if s.metricsEnabled {
 		mux.Handle("/metrics", metrics.Handler())
 	}
 
+	// 启动 HTTP 服务器。
 	server := &http.Server{
 		Addr:              s.addr,
 		Handler:           withContext(ctx, mux),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
+	// 监听关闭信号并优雅关闭服务器。
 	errCh := make(chan error, 1)
 	go func() {
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -86,6 +92,7 @@ func (s *Server) Start(ctx context.Context) error {
 		close(errCh)
 	}()
 
+	// 等待上下文取消或服务器错误。
 	select {
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -97,6 +104,7 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 }
 
+// handleTasks 处理与智能体任务相关的请求。
 func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
@@ -108,6 +116,7 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// instrument 包装 HTTP 处理器以收集请求指标。
 func (s *Server) instrument(name string, handler http.Handler) http.Handler {
 	if !s.metricsEnabled {
 		return handler
@@ -122,11 +131,13 @@ func (s *Server) instrument(name string, handler http.Handler) http.Handler {
 
 // handleCreateTask 处理创建智能体任务的请求。
 func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
+	// 仅允许 POST 方法。
 	if r.Method != http.MethodPost {
 		http.Error(w, "仅支持 POST", http.StatusMethodNotAllowed)
 		return
 	}
 
+	// 解析请求体。
 	var req agent.TaskRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		logger.L().Warn("任务创建请求解析失败", slog.Any("error", err))
@@ -139,6 +150,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 提交任务。
 	ctx := r.Context()
 	taskItem, err := s.tasks.Submit(ctx, req)
 	if err != nil {
@@ -148,6 +160,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 返回任务创建响应。
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	_ = json.NewEncoder(w).Encode(map[string]any{
@@ -156,6 +169,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		"attempts":    taskItem.Attempts,
 		"max_retries": taskItem.MaxRetries,
 	})
+	// 记录任务受理日志。
 	logFields := []any{slog.String("task_id", taskItem.ID)}
 	if subject := auth.SubjectFromContext(ctx); subject != nil {
 		logFields = append(logFields, slog.String("user", subject.Username))
@@ -163,6 +177,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	logger.L().Info("任务已受理", logFields...)
 }
 
+// handleAuthToken 处理身份认证令牌请求。
 func (s *Server) handleAuthToken(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "仅支持 POST", http.StatusMethodNotAllowed)
@@ -205,12 +220,14 @@ func (s *Server) handleAuthToken(w http.ResponseWriter, r *http.Request) {
 	logger.L().Info("令牌签发成功", slog.String("grant_type", req.GrantType))
 }
 
+// handleListTasks 处理列出智能体任务的请求。
 func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	if s.tasks == nil {
 		http.Error(w, "任务服务未初始化", http.StatusServiceUnavailable)
 		return
 	}
 
+	// 处理单个任务查询。
 	ctx := r.Context()
 	if id := r.URL.Query().Get("id"); id != "" {
 		taskItem, err := s.tasks.Get(ctx, id)
@@ -228,6 +245,7 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 处理任务列表查询，支持 limit 参数。
 	limit := 20
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
@@ -235,6 +253,7 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// 列出任务。
 	tasks, err := s.tasks.List(ctx, limit)
 	if err != nil {
 		logger.L().Error("列出任务失败", slog.Any("error", err))
@@ -242,20 +261,24 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 返回任务列表响应。
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(tasks)
 }
 
+// statusWriter 包装 http.ResponseWriter 以捕获响应状态码。
 type statusWriter struct {
 	http.ResponseWriter
 	status int
 }
 
+// Write 捕获响应状态码。
 func (w *statusWriter) WriteHeader(code int) {
 	w.status = code
 	w.ResponseWriter.WriteHeader(code)
 }
 
+// statusCode 返回捕获的状态码，默认为 200。
 func (w *statusWriter) statusCode() int {
 	if w.status == 0 {
 		return http.StatusOK
@@ -265,6 +288,7 @@ func (w *statusWriter) statusCode() int {
 
 // withContext 确保请求处理能够感知根上下文取消。
 func withContext(ctx context.Context, handler http.Handler) http.Handler {
+	// 如果根上下文已取消，立即返回服务不可用响应。
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-ctx.Done():
@@ -276,6 +300,7 @@ func withContext(ctx context.Context, handler http.Handler) http.Handler {
 	})
 }
 
+// statusFromError 将错误映射为 HTTP 状态码。
 func statusFromError(err error) int {
 	if err == nil {
 		return http.StatusInternalServerError

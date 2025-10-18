@@ -8,8 +8,7 @@ import (
 	"sync"
 )
 
-// MemoryStore provides an in-memory implementation of the Store interface,
-// intended for development and testing scenarios.
+// MemoryStore 是基于内存的身份认证存储实现，适用于测试和轻量级场景。
 type MemoryStore struct {
 	mu     sync.RWMutex
 	users  map[string]*User
@@ -17,13 +16,15 @@ type MemoryStore struct {
 	nextID int64
 }
 
-// NewMemoryStore initialises the store with the provided seed users.
+// NewMemoryStore 使用初始种子数据创建 MemoryStore 实例。
 func NewMemoryStore(seeds []Seed) (*MemoryStore, error) {
+	// 初始化存储结构。
 	store := &MemoryStore{
 		users:  make(map[string]*User),
 		byID:   make(map[int64]*Subject),
 		nextID: 1,
 	}
+	// 应用种子数据。
 	for _, seed := range seeds {
 		if strings.TrimSpace(seed.Username) == "" {
 			continue
@@ -56,7 +57,7 @@ func NewMemoryStore(seeds []Seed) (*MemoryStore, error) {
 	return store, nil
 }
 
-// ApplySeed implements the SeedWriter interface.
+// ApplySeed 应用单个种子数据以添加或更新用户记录。
 func (s *MemoryStore) ApplySeed(_ context.Context, seed Seed) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -98,7 +99,7 @@ func (s *MemoryStore) ApplySeed(_ context.Context, seed Seed) error {
 	return nil
 }
 
-// FindUserByUsername retrieves the user record.
+// FindUserByUsername 根据用户名查找用户记录。
 func (s *MemoryStore) FindUserByUsername(_ context.Context, username string) (*User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -109,7 +110,7 @@ func (s *MemoryStore) FindUserByUsername(_ context.Context, username string) (*U
 	return nil, errors.New("user not found")
 }
 
-// LoadSubject returns the subject with roles and permissions.
+// LoadSubject 根据用户 ID 加载主体信息。
 func (s *MemoryStore) LoadSubject(_ context.Context, userID int64) (*Subject, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -120,6 +121,7 @@ func (s *MemoryStore) LoadSubject(_ context.Context, userID int64) (*Subject, er
 	return nil, errors.New("subject not found")
 }
 
+// dedupeStrings 去重并规范化字符串切片。
 func dedupeStrings(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
 	for _, value := range values {

@@ -84,6 +84,7 @@ func (p *StaticProvider) Query(goal, chainAction string) []Snippet {
 	return results
 }
 
+// matches 检查知识片段是否与目标或链上操作匹配。
 func matches(snippet Snippet, goal, chainAction string) bool {
 	if len(snippet.Keywords) == 0 {
 		return true
