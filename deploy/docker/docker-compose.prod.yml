@@ -1,0 +1,85 @@
+version: "3.9"
+
+x-openmcp-config: &openmcp-config
+  file: ./config/openmcp.mysql.json.tmpl
+
+services:
+  openmcpd:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: openmcp-chain:latest
+    depends_on:
+      mysql:
+        condition: service_healthy
+      anvil:
+        condition: service_started
+    environment:
+      OPENMCP_CONFIG: /var/run/openmcp/config/openmcp.json
+      OPENMCP_CONFIG_TEMPLATE: /etc/openmcp/config/openmcp.json.tmpl
+      OPENMCP_DATA_DIR: /var/lib/openmcp
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      MYSQL_HOST: ${MYSQL_HOST:-mysql}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-openmcp}
+      MYSQL_USER: ${MYSQL_USER:-openmcp}
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql-password
+      OPENAI_API_KEY_FILE: /run/secrets/openai-api-key
+    env_file:
+      - ./.env
+    configs:
+      - source: openmcp-config
+        target: /etc/openmcp/config/openmcp.json.tmpl
+    secrets:
+      - openai-api-key
+      - mysql-password
+    volumes:
+      - openmcp-data:/var/lib/openmcp
+    ports:
+      - "8080:8080"
+
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-openmcp}
+      MYSQL_USER: ${MYSQL_USER:-openmcp}
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql-password
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql-password
+    command: ["--default-authentication-plugin=mysql_native_password"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    secrets:
+      - mysql-password
+
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    command:
+      - anvil
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8545"
+    ports:
+      - "8545:8545"
+
+configs:
+  openmcp-config:
+    <<: *openmcp-config
+
+secrets:
+  openai-api-key:
+    file: ./secrets/openai-api-key
+  mysql-password:
+    file: ./secrets/mysql-password
+
+volumes:
+  openmcp-data:
+  mysql-data:

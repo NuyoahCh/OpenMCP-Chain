@@ -1,0 +1,6 @@
+apiVersion: v2
+name: openmcp-chain
+description: Helm chart for deploying the OpenMCP-Chain agent runtime
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

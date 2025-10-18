@@ -1,48 +1,94 @@
 # Deployment Assets
 
-The `deploy/` directory aggregates infrastructure-as-code and packaging assets
-used to operate OpenMCP-Chain across environments.
+`deploy/` 目录汇总了用于在不同环境中运行 OpenMCP-Chain 的基础设施即代码（Infrastructure-as-Code）与打包资源。
 
-## Structure
+## 目录结构
 
-* `docker/` – Container build definitions for the daemon and supporting
-  services.
-* `helm/` – Kubernetes Helm charts for clustered deployments with configurable
-  replicas, ingress, and secret management.
-* `terraform/` – Infrastructure modules for provisioning cloud resources such as
-  databases, message queues, and key management systems.
+- `docker/` – Dockerfile、Compose 模板以及 Secrets 协调脚本。
+- `k8s/` – Kubernetes Helm Chart，支持自定义副本数、Ingress 与密钥管理。
+- `migrations/` – 数据库迁移脚本样例。
 
-Each subdirectory includes environment-specific overrides and documentation.
+## Docker Compose
 
-## 快速启动开发依赖
+### 开发环境
 
-若需要本地验证 MySQL 落库与区块链交互，可直接使用 `docker-compose`：
+用于快速验证链上交互，可直接启用本地依赖：
 
 ```bash
 cd deploy/docker
 docker compose -f docker-compose.dev.yml up -d
 ```
 
-该组合会启动：
+组合服务包括：
 
-- **MySQL 8.0**：预置 `openmcp` 数据库及 `openmcp/openmcp` 用户，可直接与 `configs/openmcp.mysql.json` 搭配。首次启动时会自动初始化数据表。
-- **Anvil**（Foundry）节点：提供以太坊兼容的本地链，监听 `8545` 端口。默认从公共 RPC fork 主网，可根据网络情况改为 `--fork-url none`。
+- **MySQL 8.0**：预置 `openmcp/openmcp` 账号，并自动初始化业务数据表。
+- **Foundry Anvil**：启动以太坊兼容节点，监听 `8545` 端口。
 
-如需同步验证知识库功能，可在同级目录维护 JSON 文件，并将 `configs/openmcp.json` 中的 `knowledge.source` 指向该路径，容器启动时会自动挂载。
-
-关闭服务：
+停用服务：
 
 ```bash
 docker compose -f docker-compose.dev.yml down
 ```
-# 部署资源
 
-`deploy/` 目录汇总了用于在不同环境中操作 OpenMCP-Chain 的基础设施即代码（Infrastructure-as-Code）和打包资源。
+### 生产部署模板
 
-## 目录结构
+`docker-compose.prod.yml` 提供了一套可与真实基础设施对接的样例：
 
-* `docker/` – 守护进程及支持服务的容器构建定义。
-* `helm/` – Kubernetes 的 Helm 图表，用于集群部署，支持配置副本数、入口（Ingress）和密钥管理。
-* `terraform/` – 用于配置云资源（如数据库、消息队列和密钥管理系统）的基础设施模块。
+1. 复制示例环境变量：
+   ```bash
+   cp deploy/docker/.env.example deploy/docker/.env
+   ```
+2. 在 `deploy/docker/secrets/` 目录内创建密钥文件：
+   - `openai-api-key`：OpenAI 兼容 API Token。
+   - `mysql-password`：MySQL 用户密码。
+3. 启动服务：
+   ```bash
+   docker compose -f deploy/docker/docker-compose.prod.yml up -d
+   ```
 
-每个子目录都包含特定环境的覆盖配置和文档。
+Compose 会通过下列方式整合配置：
+
+- `.env` 注入通用环境变量（日志级别、模型名称等）。
+- `configs/openmcp.mysql.json.tmpl` 作为模板挂载，由容器入口脚本基于环境变量与 Secret 渲染最终 `openmcp.json`。
+- Docker Secrets 将 `OPENAI_API_KEY`、`MYSQL_PASSWORD` 等敏感信息以文件形式挂载，入口脚本负责导出环境变量。
+
+## Kubernetes（Helm Chart）
+
+`deploy/k8s` 目录提供了开箱即用的 Helm Chart：
+
+```bash
+helm upgrade --install openmcp-chain ./deploy/k8s \
+  --namespace openmcp --create-namespace \
+  --set secrets.openai.value="$OPENAI_API_KEY" \
+  --set secrets.mysql.value="$MYSQL_PASSWORD"
+```
+
+Chart 主要能力：
+
+- `ConfigMap`：下发配置模板并在容器启动时渲染为 `openmcp.json`。
+- `Secret`：可选择内联密钥或复用集群既有 Secret。
+- `PersistentVolumeClaim`：默认启用，用于持久化审计日志与任务数据。
+- 可选 `Ingress`、`ServiceMonitor`，满足暴露 API 与 Prometheus 采集需求。
+
+所有可配置项详见 `deploy/k8s/values.yaml` 与 `deploy/k8s/README.md`。
+
+## 配置管理要点
+
+- `OPENMCP_CONFIG_TEMPLATE` 指向 JSON 模板，容器启动时将其渲染到 `OPENMCP_CONFIG` 指定路径。
+- `OPENAI_API_KEY_FILE`、`MYSQL_PASSWORD_FILE` 允许以文件方式注入敏感信息，避免出现在命令历史中。
+- 通过环境变量可覆盖默认链路（如 `MYSQL_HOST`、`OPENAI_MODEL`、`LOG_LEVEL`）。
+
+## CI/CD Pipeline 示例
+
+`.github/workflows/deploy.yml` 演示了从源码到集群的自动化流程：
+
+1. **build**：运行 `go test ./...`，使用 Buildx 构建镜像并推送到 GHCR。
+2. **deploy**：读取 `KUBE_CONFIG`、`OPENAI_API_KEY`、`MYSQL_PASSWORD` 等机密，使用 Helm 将最新镜像发布至 Kubernetes。
+
+该 Workflow 需在仓库 Secrets 中预先配置：
+
+- `REGISTRY_TOKEN` – 推送镜像所需的访问凭据。
+- `KUBE_CONFIG` – Base64 编码后的 kubeconfig。
+- `OPENAI_API_KEY`、`MYSQL_PASSWORD` – 运行时依赖的外部服务密钥。
+
+根据实际环境可进一步扩展审批、灰度发布等步骤。
