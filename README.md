@@ -2,115 +2,107 @@
 
 OpenMCP-Chain 是一个将区块链基础设施与大模型智能体深度融合的开源协议栈。项目提供可验证的代理执行环境，让 AI Agent 能够安全地调用 Web3 能力，并保留完整的审计与溯源数据。
 
+## 目录
+
+- [核心特性](#核心特性)
+- [架构与文档](#架构与文档)
+- [快速入门](#快速入门)
+- [API 速览](#api-速览)
+- [示例脚本](#示例脚本)
+- [常见问题](#常见问题)
+- [贡献指南](#贡献指南)
+- [许可协议](#许可协议)
+
 ## 核心特性
 
-- **Golang + Python 协同**：通过内置的 Python Bridge 触发推理脚本，便于在 Go 服务中复用社区的模型能力。
-- **Web3 快速接入**：内置 JSON-RPC 客户端，可直接查询链 ID、最新区块高度等关键指标，并支持执行常见读操作（如 `eth_getBalance`、`eth_getTransactionCount`）。
+- **Golang + Python 协同**：通过内置的 Python Bridge 触发推理脚本，便于在 Go 服务中复用模型能力。
+- **Web3 快速接入**：内置 JSON-RPC 客户端，可查询链 ID、最新区块高度等指标，并支持 `eth_getBalance`、`eth_getTransactionCount` 等读操作。
 - **可追踪任务日志**：默认使用本地文件模拟 MySQL 持久化，同时提供真实 MySQL 仓库实现，满足生产环境的数据一致性需求。
-- **任务历史查询**：REST API 除了支持触发智能体执行外，还可以拉取最近的推理记录，便于联调与审计。
-- **上下文记忆驱动的推理**：Agent 会在推理前自动装载最近的任务历史，把经验注入 Prompt，提升回答的连续性与可解释性。
+- **上下文记忆驱动的推理**：Agent 在推理前自动装载最近的任务历史，把经验注入 Prompt，提升回答连续性。
 - **知识库增强**：通过静态知识卡片在推理时补充领域经验，让回复同时参考链上最佳实践与安全提示。
-- **Web3 快速接入**：内置 JSON-RPC 客户端，可直接查询链 ID、最新区块高度等关键指标。
-- **可追踪任务日志**：默认使用本地文件模拟 MySQL 持久化，同时提供真实 MySQL 仓库实现，满足生产环境的数据一致性需求。
-- **任务历史查询**：REST API 除了支持触发智能体执行外，还可以拉取最近的推理记录，便于联调与审计。
 - **可扩展架构**：配置、存储、Agent、API、Web3 等模块均采用接口抽象，支持按需替换实现。
 
-## 代码结构
+## 架构与文档
 
-```
-cmd/openmcpd/        # 守护进程入口，负责初始化所有子系统
-configs/             # 默认配置文件示例
-internal/
-  agent/             # 智能体编排逻辑
-  api/               # REST API 服务
-  config/            # 配置解析与默认值填充
-  llm/               # 大模型接口与 Python Bridge 实现
-  storage/mysql/     # 任务落库接口及内存实现
-  web3/ethereum/     # 基于 JSON-RPC 的以太坊客户端
-scripts/             # Python 推理脚本、自动化工具
-```
+- 系统设计与流程图参见 [`docs/architecture.md`](docs/architecture.md)。
+- API 契约说明位于 [`docs/api/`](docs/api/)。
+- 部署建议与演进规划参见 [`docs/deployment.md`](docs/deployment.md) 与 [`docs/roadmap.md`](docs/roadmap.md)。
+- 文档校对流程请查阅 [`docs/documentation-review.md`](docs/documentation-review.md)。
 
-更多架构细节可在 `docs/` 目录中查看。
+## 快速入门
 
-## 快速体验
+### 环境准备
 
-1. 安装 Go 1.22 以及 Python 3 环境。
-2. 执行 `go build ./...` 确认依赖齐全。
-3. 运行守护进程：
-   ```bash
-   OPENMCP_CONFIG=$(pwd)/configs/openmcp.json go run ./cmd/openmcpd
-   ```
-4. 另开一个终端，通过 REST API 提交任务：
-   ```bash
-   curl -X POST http://127.0.0.1:8080/api/v1/tasks \
-     -H 'Content-Type: application/json' \
-     -d '{"goal":"查询账户余额","chain_action":"eth_getBalance","address":"0x0000000000000000000000000000000000000000"}'
-   ```
-   服务会调用 Python 脚本生成思考与回复，并尝试从配置的以太坊节点获取链上快照。
+1. 安装 **Go 1.22+** 与 **Python 3.9+**。
+2. （可选）准备可访问的以太坊 JSON-RPC 节点。
 
-默认配置会在 `data/tasks.log` 中记录每次任务执行的摘要，便于调试和后续迁移至 MySQL。
-
-5. 查询最新的任务执行历史：
-   ```bash
-   curl "http://127.0.0.1:8080/api/v1/tasks?limit=5"
-   ```
-
-   或使用内置的 Python 客户端脚本：
-
-   ```bash
-   python scripts/task_client.py invoke --goal "查询账户余额" --chain-action eth_getBalance --address 0x0000000000000000000000000000000000000000
-   python scripts/task_client.py history --limit 5
-   ```
-
-### 自定义智能体记忆深度
-
-`agent.memory_depth` 用于控制在调用 Python Bridge 前装载多少条历史任务。默认值为 5，可根据业务需求调整：
-
-```json
-{
-  "agent": {
-    "memory_depth": 10
-  }
-}
-```
-
-当历史记录不足时，Agent 会自动忽略缺失项；如果加载历史失败，相应提示会出现在任务的 `observations` 字段中。
-
-### 启用知识库提示
-
-`knowledge.source` 指向一个 JSON 文件，用于为特定目标或链上操作提供静态知识卡片。Agent 会筛选符合关键词的条目，作为额外提示注入大模型推理：
-
-```json
-{
-  "knowledge": {
-    "source": "configs/knowledge/tutorial.json",
-    "max_results": 3
-  }
-}
-```
-
-每个知识卡片应包含 `title`、`content` 以及可选的 `keywords`、`tags` 字段。匹配成功后，标题会体现在 `observations` 字段中，同时 Python 推理脚本也会在回复里引用对应知识点，帮助落地策略。
-
-### 启用 MySQL 持久化
-
-当你准备好连接真实的 MySQL 时，可在配置文件中将 `storage.task_store.driver` 设置为 `mysql`，并补充 `dsn`。随后以 `-tags mysql` 构建或运行 `openmcpd`，即可启用内置的 SQL 仓库：
+### 构建与运行
 
 ```bash
-OPENMCP_CONFIG=$(pwd)/configs/openmcp.mysql.json go run -tags mysql ./cmd/openmcpd
+# 拉取依赖并编译
+go build ./...
+
+# 启动守护进程（默认配置位于 configs/openmcp.json）
+OPENMCP_CONFIG=$(pwd)/configs/openmcp.json go run ./cmd/openmcpd
 ```
 
-`configs/openmcp.mysql.json` 为示例配置，包含了最小可用的 MySQL 连接参数。守护进程会在启动时自动初始化 `tasks` 数据表，并在写入失败时返回清晰的错误信息。
+服务启动后将监听 `http://127.0.0.1:8080`，并在 `data/tasks.log` 写入执行摘要。
 
-> 提示：构建时需要从官方源下载 `github.com/go-sql-driver/mysql`，请确保环境可以访问外网或提前在内部镜像中缓存依赖。
+### 触发一次任务
+
+可直接使用 `curl`，或运行示例脚本：
+
+```bash
+# 使用示例脚本提交任务
+python examples/task_quickstart.py invoke \
+  --goal "查询账户余额" \
+  --chain-action eth_getBalance \
+  --address 0x0000000000000000000000000000000000000000
+
+# 查看最近的 5 条任务历史
+python examples/task_quickstart.py history --limit 5
+```
+
+若未配置真实 RPC 节点，链上数据字段会为空，错误信息会写入 `observations`。
+
+## API 速览
+
+当前版本实现以下 REST 接口，详见 [`docs/api/tasks.md`](docs/api/tasks.md)：
+
+| Method | Path | 描述 |
+| --- | --- | --- |
+| `POST` | `/api/v1/tasks` | 提交一次智能体任务，返回推理输出、链上快照与审计信息。 |
+| `GET` | `/api/v1/tasks` | 查询最近的任务执行记录，支持 `limit` 参数。 |
+
+## 示例脚本
+
+- `examples/task_quickstart.py`：命令行客户端，演示如何调用 REST API 并解析响应。
+- `examples/README.md`：记录示例依赖与运行方式，便于扩展更多脚本或 Notebook。
+
+欢迎补充新的示例，并在 PR 中引用相关文档章节。
+
+## 常见问题
+
+**Q: 需要同时安装 Go 和 Python 吗？**<br>
+是的。守护进程由 Go 实现，推理逻辑通过 Python Bridge 执行。若缺少 Python，`POST /api/v1/tasks` 将返回桥接失败错误。
+
+**Q: 未连接真实 RPC 节点会怎样？**<br>
+系统仍会完成推理，但 `chain_id`、`block_number` 等字段为空，并在 `observations` 中提示 RPC 错误。可通过 `configs/openmcp.json` 修改 RPC 端点。
+
+**Q: 如何接入 MySQL？**<br>
+在配置中将 `storage.task_store.driver` 设置为 `mysql` 并提供 `dsn`，随后以 `-tags mysql` 运行 `openmcpd`。示例配置见 `configs/openmcp.mysql.json`。
+
+**Q: 文档如何保持最新？**<br>
+请参考 [`docs/documentation-review.md`](docs/documentation-review.md) 中的校对流程，在 PR 中勾选受影响的文档并安排同伴审阅。
 
 ## 贡献指南
 
 欢迎提交 Issue 或 Pull Request，共同完善区块链与大模型融合的最佳实践。贡献代码时请确保：
 
-- 保持 Go 代码通过 `go fmt`。
-- 为新增模块补充文档或注释，最好采用中文描述业务意图。
-- 如果引入外部依赖，请在文档中说明用途与替代方案。
+- 通过 `go fmt`、`go test` 等基础校验；
+- 为新增模块补充文档或注释；
+- 遵循[文档校对流程](docs/documentation-review.md)，在 PR 中注明已更新的章节。
 
 ## 许可协议
 
-项目遵循 MIT License，详情请参阅 `LICENSE` 文件。
+项目遵循 MIT License，详情请参阅 [`LICENSE`](LICENSE) 文件。
