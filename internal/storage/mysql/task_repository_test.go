@@ -202,17 +202,30 @@ func TestSQLTaskRepositoryWithTransaction(t *testing.T) {
 func TestSQLTaskRepositoryRunMigrations(t *testing.T) {
 	t.Parallel()
 
+	migrations, err := loadMigrationFiles()
+	if err != nil {
+		t.Fatalf("load migrations failed: %v", err)
+	}
+
 	ops := []mockOperation{
 		execOp(`CREATE TABLE IF NOT EXISTS schema_migrations (
-        version VARCHAR(32) NOT NULL PRIMARY KEY,
-        applied_at BIGINT NOT NULL
+	version VARCHAR(32) NOT NULL PRIMARY KEY,
+	applied_at BIGINT NOT NULL
 )`, mockResult{}),
 		queryOp(`SELECT version FROM schema_migrations`, mockRowsData{columns: []string{"version"}}),
-		beginOp(),
-		execOp(readMigrationStatement(), mockResult{rowsAffected: 0}),
-		execOp(`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`, mockResult{rowsAffected: 1}),
-		commitOp(),
 	}
+
+	for _, migration := range migrations {
+		ops = append(ops, beginOp())
+		for _, stmt := range migration.statements {
+			ops = append(ops, execOp(stmt, mockResult{rowsAffected: 0}))
+		}
+		ops = append(ops,
+			execOp(`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`, mockResult{rowsAffected: 1}),
+			commitOp(),
+		)
+	}
+
 	db, driver := newMockDB(t, ops)
 	defer driver.assertConsumed(t)
 	defer db.Close()
@@ -231,18 +244,6 @@ func insertTaskSQL() string {
 func updateTaskSQL() string {
 	return `UPDATE tasks SET goal = ?, chain_action = ?, address = ?, thought = ?, reply = ?, chain_id = ?, block_number = ?, observes = ?, created_at = ?, updated_at = ?
     WHERE id = ?`
-}
-
-func readMigrationStatement() string {
-	content, err := embeddedMigrations.ReadFile("0001_create_tasks.sql")
-	if err != nil {
-		panic(fmt.Sprintf("failed to read migration: %v", err))
-	}
-	statements := splitSQLStatements(string(content))
-	if len(statements) == 0 {
-		panic("no statements in migration")
-	}
-	return statements[0]
 }
 
 type operationType int
