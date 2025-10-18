@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -21,6 +22,7 @@ type Config struct {
 	Knowledge     KnowledgeConfig     `json:"knowledge"`
 	TaskQueue     TaskQueueConfig     `json:"task_queue"`
 	Observability ObservabilityConfig `json:"observability"`
+	Auth          AuthConfig          `json:"auth"`
 }
 
 // ServerConfig 控制 API 服务的监听地址等参数。
@@ -31,6 +33,7 @@ type ServerConfig struct {
 // StorageConfig 统一描述 MySQL、Redis 等后端的连接信息。
 type StorageConfig struct {
 	TaskStore TaskStoreConfig `json:"task_store"`
+	AuthStore AuthStoreConfig `json:"auth_store"`
 }
 
 // TaskStoreConfig 目前提供内存实现，后续可以切换到真正的 MySQL。
@@ -38,6 +41,16 @@ type TaskStoreConfig struct {
 	Driver                 string `json:"driver"`
 	DSN                    string `json:"dsn"`
 	Retries                int    `json:"retries"`
+	MaxOpenConns           int    `json:"max_open_conns"`
+	MaxIdleConns           int    `json:"max_idle_conns"`
+	ConnMaxLifetimeSeconds int    `json:"conn_max_lifetime_seconds"`
+	ConnMaxIdleTimeSeconds int    `json:"conn_max_idle_time_seconds"`
+}
+
+// AuthStoreConfig 描述用户、角色与权限存储的参数。
+type AuthStoreConfig struct {
+	Driver                 string `json:"driver"`
+	DSN                    string `json:"dsn"`
 	MaxOpenConns           int    `json:"max_open_conns"`
 	MaxIdleConns           int    `json:"max_idle_conns"`
 	ConnMaxLifetimeSeconds int    `json:"conn_max_lifetime_seconds"`
@@ -75,6 +88,44 @@ type ObservabilityConfig struct {
 	Logging LoggingConfig `json:"logging"`
 	Metrics MetricsConfig `json:"metrics"`
 	Audit   AuditConfig   `json:"audit"`
+}
+
+// AuthConfig 控制身份认证和授权的工作模式。
+type AuthConfig struct {
+	Mode  string      `json:"mode"`
+	JWT   JWTConfig   `json:"jwt"`
+	OAuth OAuthConfig `json:"oauth"`
+	Seeds []UserSeed  `json:"seeds"`
+}
+
+// JWTConfig 描述本地 JWT 签发与校验所需的参数。
+type JWTConfig struct {
+	Secret                 string `json:"secret"`
+	SecretEnv              string `json:"secret_env"`
+	Issuer                 string `json:"issuer"`
+	Audience               string `json:"audience"`
+	AccessTokenTTLSeconds  int    `json:"access_token_ttl_seconds"`
+	RefreshTokenTTLSeconds int    `json:"refresh_token_ttl_seconds"`
+}
+
+// OAuthConfig 描述与外部 OAuth2/OIDC 服务的集成方式。
+type OAuthConfig struct {
+	TokenURL         string   `json:"token_url"`
+	IntrospectionURL string   `json:"introspection_url"`
+	ClientID         string   `json:"client_id"`
+	ClientSecret     string   `json:"client_secret"`
+	Scopes           []string `json:"scopes"`
+	TimeoutSeconds   int      `json:"timeout_seconds"`
+	UsernameClaim    string   `json:"username_claim"`
+}
+
+// UserSeed 用于在非生产环境快速初始化内存/数据库的默认账号。
+type UserSeed struct {
+	Username    string   `json:"username"`
+	Password    string   `json:"password"`
+	Roles       []string `json:"roles"`
+	Permissions []string `json:"permissions"`
+	Disabled    bool     `json:"disabled"`
 }
 
 // LoggingConfig controls structured logging behaviour.
@@ -207,6 +258,22 @@ func (c *Config) applyDefaults(baseDir string) {
 		c.Storage.TaskStore.ConnMaxIdleTimeSeconds = 0
 	}
 
+	if c.Storage.AuthStore.Driver == "" {
+		c.Storage.AuthStore.Driver = c.Storage.TaskStore.Driver
+	}
+	if c.Storage.AuthStore.MaxOpenConns <= 0 {
+		c.Storage.AuthStore.MaxOpenConns = 10
+	}
+	if c.Storage.AuthStore.MaxIdleConns <= 0 {
+		c.Storage.AuthStore.MaxIdleConns = 5
+	}
+	if c.Storage.AuthStore.ConnMaxLifetimeSeconds <= 0 {
+		c.Storage.AuthStore.ConnMaxLifetimeSeconds = 1800
+	}
+	if c.Storage.AuthStore.ConnMaxIdleTimeSeconds < 0 {
+		c.Storage.AuthStore.ConnMaxIdleTimeSeconds = 0
+	}
+
 	if c.LLM.Provider == "" {
 		c.LLM.Provider = "python_bridge"
 	}
@@ -301,5 +368,21 @@ func (c *Config) applyDefaults(baseDir string) {
 
 	if c.Web3.ChainConfig != "" && !filepath.IsAbs(c.Web3.ChainConfig) {
 		c.Web3.ChainConfig = filepath.Join(baseDir, c.Web3.ChainConfig)
+	}
+
+	if strings.TrimSpace(c.Auth.Mode) == "" {
+		c.Auth.Mode = "disabled"
+	}
+	if c.Auth.JWT.AccessTokenTTLSeconds <= 0 {
+		c.Auth.JWT.AccessTokenTTLSeconds = 3600
+	}
+	if c.Auth.JWT.RefreshTokenTTLSeconds <= 0 {
+		c.Auth.JWT.RefreshTokenTTLSeconds = 86400
+	}
+	if c.Auth.OAuth.TimeoutSeconds <= 0 {
+		c.Auth.OAuth.TimeoutSeconds = 15
+	}
+	if c.Auth.OAuth.UsernameClaim == "" {
+		c.Auth.OAuth.UsernameClaim = "username"
 	}
 }

@@ -11,9 +11,11 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 
 	"OpenMCP-Chain/internal/agent"
 	"OpenMCP-Chain/internal/api"
+	"OpenMCP-Chain/internal/auth"
 	"OpenMCP-Chain/internal/config"
 	"OpenMCP-Chain/internal/knowledge"
 	"OpenMCP-Chain/internal/llm"
@@ -184,6 +186,19 @@ func run(ctx context.Context) error {
 		knowledgeProvider = provider
 	}
 
+	authService, authCleanup, err := initAuth(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("初始化认证失败: %w", err)
+	}
+	if authCleanup != nil {
+		defer authCleanup()
+	}
+	if authService != nil && authService.Mode() != auth.ModeDisabled {
+		log.Info("已启用身份认证", slog.String("mode", string(authService.Mode())))
+	} else {
+		log.Info("身份认证未启用")
+	}
+
 	opts := []agent.Option{
 		agent.WithMemoryDepth(cfg.Agent.MemoryDepth),
 		agent.WithKnowledgeProvider(knowledgeProvider),
@@ -228,6 +243,7 @@ func run(ctx context.Context) error {
 
 	server := api.NewServer(cfg.Server.Address, taskService,
 		api.WithMetrics(serveMetricsInAPIServer),
+		api.WithAuthService(authService),
 	)
 
 	if cfg.Observability.Metrics.Enabled && serveMetricsInAPIServer {
@@ -262,4 +278,112 @@ func createLLMClient(cfg *config.Config) (llm.Client, error) {
 	default:
 		return nil, fmt.Errorf("未知的大模型 provider: %s", cfg.LLM.Provider)
 	}
+}
+
+func initAuth(ctx context.Context, cfg *config.Config) (*auth.Service, func() error, error) {
+	mode := strings.ToLower(strings.TrimSpace(cfg.Auth.Mode))
+	if mode == "" || mode == string(auth.ModeDisabled) {
+		return nil, nil, nil
+	}
+
+	seeds := make([]auth.Seed, 0, len(cfg.Auth.Seeds))
+	for _, seed := range cfg.Auth.Seeds {
+		seeds = append(seeds, auth.Seed{
+			Username:    seed.Username,
+			Password:    seed.Password,
+			Roles:       append([]string(nil), seed.Roles...),
+			Permissions: append([]string(nil), seed.Permissions...),
+			Disabled:    seed.Disabled,
+		})
+	}
+
+	var (
+		store   auth.Store
+		cleanup func() error
+	)
+
+	switch strings.ToLower(strings.TrimSpace(cfg.Storage.AuthStore.Driver)) {
+	case "", "memory":
+		memStore, err := auth.NewMemoryStore(nil)
+		if err != nil {
+			return nil, nil, err
+		}
+		store = memStore
+	case "mysql":
+		dbCfg := mysql.Config{
+			DSN:             cfg.Storage.AuthStore.DSN,
+			MaxOpenConns:    cfg.Storage.AuthStore.MaxOpenConns,
+			MaxIdleConns:    cfg.Storage.AuthStore.MaxIdleConns,
+			ConnMaxLifetime: time.Duration(cfg.Storage.AuthStore.ConnMaxLifetimeSeconds) * time.Second,
+			ConnMaxIdleTime: time.Duration(cfg.Storage.AuthStore.ConnMaxIdleTimeSeconds) * time.Second,
+		}
+		sqlStore, err := mysql.NewSQLAuthStore(ctx, dbCfg)
+		if err != nil {
+			return nil, nil, err
+		}
+		store = sqlStore
+		cleanup = sqlStore.Close
+	default:
+		return nil, nil, fmt.Errorf("未知的认证存储驱动: %s", cfg.Storage.AuthStore.Driver)
+	}
+
+	jwtSecret := strings.TrimSpace(cfg.Auth.JWT.Secret)
+	if jwtSecret == "" && cfg.Auth.JWT.SecretEnv != "" {
+		jwtSecret = strings.TrimSpace(os.Getenv(cfg.Auth.JWT.SecretEnv))
+	}
+
+	authCfg := auth.Config{
+		Mode: auth.Mode(mode),
+		JWT: auth.JWTOptions{
+			Secret:     jwtSecret,
+			Issuer:     cfg.Auth.JWT.Issuer,
+			Audience:   parseAudience(cfg.Auth.JWT.Audience),
+			AccessTTL:  int64(cfg.Auth.JWT.AccessTokenTTLSeconds),
+			RefreshTTL: int64(cfg.Auth.JWT.RefreshTokenTTLSeconds),
+		},
+		OAuth: auth.OAuthOptions{
+			TokenURL:         cfg.Auth.OAuth.TokenURL,
+			IntrospectionURL: cfg.Auth.OAuth.IntrospectionURL,
+			ClientID:         cfg.Auth.OAuth.ClientID,
+			ClientSecret:     cfg.Auth.OAuth.ClientSecret,
+			Scopes:           append([]string(nil), cfg.Auth.OAuth.Scopes...),
+			TimeoutSeconds:   cfg.Auth.OAuth.TimeoutSeconds,
+			UsernameClaim:    cfg.Auth.OAuth.UsernameClaim,
+		},
+		Seeds: seeds,
+	}
+
+	service, err := auth.NewService(ctx, authCfg, store)
+	if err != nil {
+		if cleanup != nil {
+			cleanup()
+		}
+		return nil, nil, err
+	}
+	return service, cleanup, nil
+}
+
+func parseAudience(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		if r == ',' || r == ';' {
+			return true
+		}
+		return unicode.IsSpace(r)
+	})
+	result := make([]string, 0, len(fields))
+	for _, field := range fields {
+		trimmed := strings.TrimSpace(field)
+		if trimmed == "" {
+			continue
+		}
+		result = append(result, trimmed)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }

@@ -217,8 +217,7 @@ func TestSQLTaskRepositoryRunMigrations(t *testing.T) {
 	defer driver.assertConsumed(t)
 	defer db.Close()
 
-	repo := &SQLTaskRepository{db: db}
-	if err := repo.runMigrations(context.Background()); err != nil {
+	if err := runMigrations(context.Background(), db); err != nil {
 		t.Fatalf("run migrations failed: %v", err)
 	}
 }

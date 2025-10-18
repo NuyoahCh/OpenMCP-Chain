@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"OpenMCP-Chain/internal/agent"
+	"OpenMCP-Chain/internal/auth"
 	xerrors "OpenMCP-Chain/internal/errors"
 	"OpenMCP-Chain/internal/observability/metrics"
 	"OpenMCP-Chain/internal/task"
@@ -21,6 +22,7 @@ type Server struct {
 	addr           string
 	tasks          *task.Service
 	metricsEnabled bool
+	auth           *auth.Service
 }
 
 // NewServer 构造 API 服务实例。
@@ -44,10 +46,28 @@ func WithMetrics(enabled bool) Option {
 	}
 }
 
+// WithAuthService wires the authentication and authorization service.
+func WithAuthService(authn *auth.Service) Option {
+	return func(s *Server) {
+		s.auth = authn
+	}
+}
+
 // Start 启动 HTTP 服务，直到上下文取消或出现错误。
 func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
-	mux.Handle("/api/v1/tasks", s.instrument("tasks", http.HandlerFunc(s.handleTasks)))
+	taskHandler := http.HandlerFunc(s.handleTasks)
+	if s.auth != nil && s.auth.Mode() != auth.ModeDisabled {
+		taskHandler = s.auth.Middleware(auth.MiddlewareConfig{
+			RequiredPermissions: map[string][]string{
+				http.MethodGet:  {"tasks.read"},
+				http.MethodPost: {"tasks.write"},
+			},
+			AuditEvent: "tasks",
+		})(taskHandler)
+	}
+	mux.Handle("/api/v1/tasks", s.instrument("tasks", taskHandler))
+	mux.Handle("/api/v1/auth/token", s.instrument("auth_token", http.HandlerFunc(s.handleAuthToken)))
 	if s.metricsEnabled {
 		mux.Handle("/metrics", metrics.Handler())
 	}
@@ -136,7 +156,53 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		"attempts":    taskItem.Attempts,
 		"max_retries": taskItem.MaxRetries,
 	})
-	logger.L().Info("任务已受理", slog.String("task_id", taskItem.ID))
+	logFields := []any{slog.String("task_id", taskItem.ID)}
+	if subject := auth.SubjectFromContext(ctx); subject != nil {
+		logFields = append(logFields, slog.String("user", subject.Username))
+	}
+	logger.L().Info("任务已受理", logFields...)
+}
+
+func (s *Server) handleAuthToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "仅支持 POST", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.auth == nil || s.auth.Mode() == auth.ModeDisabled {
+		http.Error(w, "身份认证未启用", http.StatusServiceUnavailable)
+		return
+	}
+	var req auth.TokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		logger.L().Warn("认证请求解析失败", slog.Any("error", err))
+		http.Error(w, "请求体解析失败", http.StatusBadRequest)
+		return
+	}
+	token, err := s.auth.Authenticate(r.Context(), req)
+	if err != nil {
+		switch {
+		case errors.Is(err, auth.ErrInvalidCredentials):
+			http.Error(w, "认证失败", http.StatusUnauthorized)
+		case errors.Is(err, auth.ErrUnsupportedGrant):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		case errors.Is(err, auth.ErrSubjectRevoked):
+			http.Error(w, "账号已禁用", http.StatusForbidden)
+		case errors.Is(err, auth.ErrDisabled):
+			http.Error(w, "身份认证未启用", http.StatusServiceUnavailable)
+		default:
+			logger.L().Error("令牌签发失败", slog.Any("error", err))
+			http.Error(w, "服务器内部错误", http.StatusInternalServerError)
+		}
+		return
+	}
+	if token.TokenType == "" {
+		token.TokenType = "Bearer"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(token); err != nil {
+		logger.L().Error("输出认证响应失败", slog.Any("error", err))
+	}
+	logger.L().Info("令牌签发成功", slog.String("grant_type", req.GrantType))
 }
 
 func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
