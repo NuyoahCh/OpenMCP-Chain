@@ -42,5 +42,23 @@
   "task_queue": {
     "driver": "memory",
     "worker": 4
+  },
+  "observability": {
+    "logging": {
+      "level": "info",
+      "format": "json",
+      "outputs": ["stdout"]
+    },
+    "metrics": {
+      "enabled": true,
+      "address": ""
+    },
+    "audit": {
+      "enabled": true,
+      "file": "../data/audit.log",
+      "max_size_mb": 100,
+      "max_backups": 7,
+      "max_age_days": 30
+    }
   }
 }

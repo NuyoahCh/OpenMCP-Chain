@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"OpenMCP-Chain/internal/agent"
+	"OpenMCP-Chain/pkg/logger"
 )
 
 // Executor 定义了处理器所需的 Agent 能力。
@@ -21,14 +22,14 @@ type Processor struct {
 	consumer    Consumer
 	producer    Producer
 	workerCount int
-	logger      *log.Logger
+	logger      *slog.Logger
 }
 
 // ProcessorOption 定义可选配置。
 type ProcessorOption func(*Processor)
 
 // WithProcessorLogger 指定日志输出。
-func WithProcessorLogger(logger *log.Logger) ProcessorOption {
+func WithProcessorLogger(logger *slog.Logger) ProcessorOption {
 	return func(p *Processor) {
 		p.logger = logger
 	}
@@ -78,10 +79,10 @@ func (p *Processor) handle(ctx context.Context, taskID string) error {
 	task, err := p.store.Claim(ctx, taskID)
 	if err != nil {
 		if errors.Is(err, ErrTaskNotFound) || errors.Is(err, ErrTaskCompleted) || errors.Is(err, ErrTaskExhausted) {
-			p.debugf("跳过任务 %s: %v", taskID, err)
+			p.logDebug("跳过任务", slog.String("task_id", taskID), slog.String("reason", err.Error()))
 			return nil
 		}
-		p.debugf("领取任务 %s 失败: %v", taskID, err)
+		logger.L().Error("领取任务失败", slog.Any("error", err), slog.String("task_id", taskID))
 		return err
 	}
 
@@ -93,13 +94,22 @@ func (p *Processor) handle(ctx context.Context, taskID string) error {
 	if execErr != nil {
 		terminal := task.Attempts >= task.MaxRetries
 		if storeErr := p.store.MarkFailed(ctx, task.ID, execErr.Error(), terminal); storeErr != nil {
-			p.debugf("标记任务 %s 失败状态出错: %v", task.ID, storeErr)
+			logger.L().Error("标记任务失败状态出错", slog.Any("error", storeErr), slog.String("task_id", task.ID))
 			return storeErr
 		}
+		logger.Audit().Warn("任务执行失败",
+			slog.String("task_id", task.ID),
+			slog.String("goal", task.Goal),
+			slog.Bool("terminal", terminal),
+			slog.String("error", execErr.Error()),
+			slog.Int("attempts", task.Attempts),
+			slog.Int("max_retries", task.MaxRetries),
+		)
 		if !terminal {
 			if pubErr := p.producer.Publish(ctx, task.ID); pubErr != nil {
 				return fmt.Errorf("任务 %s 重投失败: %v", task.ID, pubErr)
 			}
+			p.logDebug("任务已重新排队", slog.String("task_id", task.ID), slog.Int("attempts", task.Attempts))
 		}
 		return nil
 	}
@@ -116,20 +126,31 @@ func (p *Processor) handle(ctx context.Context, taskID string) error {
 		}
 	}
 	if err := p.store.MarkSucceeded(ctx, task.ID, record); err != nil {
-		p.debugf("标记任务 %s 成功失败: %v", task.ID, err)
+		logger.L().Error("标记任务成功状态失败", slog.Any("error", err), slog.String("task_id", task.ID))
 		if storeErr := p.store.MarkFailed(ctx, task.ID, err.Error(), false); storeErr != nil {
-			p.debugf("在写入失败状态时再次出错: %v", storeErr)
+			logger.L().Error("回写失败状态出错", slog.Any("error", storeErr), slog.String("task_id", task.ID))
 			return storeErr
 		}
 		if pubErr := p.producer.Publish(ctx, task.ID); pubErr != nil {
 			return fmt.Errorf("任务 %s 在标记成功失败后重投失败: %v", task.ID, pubErr)
 		}
+		logger.Audit().Warn("任务标记成功失败后重试",
+			slog.String("task_id", task.ID),
+			slog.String("goal", task.Goal),
+			slog.String("error", err.Error()),
+		)
+		return nil
 	}
+	logger.Audit().Info("任务执行成功",
+		slog.String("task_id", task.ID),
+		slog.String("goal", task.Goal),
+		slog.String("chain_id", record.ChainID),
+	)
 	return nil
 }
 
-func (p *Processor) debugf(format string, args ...interface{}) {
+func (p *Processor) logDebug(msg string, attrs ...slog.Attr) {
 	if p.logger != nil {
-		p.logger.Printf(format, args...)
+		p.logger.Debug(msg, attrs...)
 	}
 }

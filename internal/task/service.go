@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"OpenMCP-Chain/internal/agent"
+	"OpenMCP-Chain/pkg/logger"
 )
 
 // Service 负责任务的创建与查询。
@@ -71,9 +73,16 @@ func (s *Service) Submit(ctx context.Context, req agent.TaskRequest) (*Task, err
 		return nil, err
 	}
 	if err := s.producer.Publish(ctx, taskID); err != nil {
+		logger.L().Error("任务入队失败", slog.Any("error", err), slog.String("task_id", taskID))
 		_ = s.store.MarkFailed(ctx, taskID, fmt.Sprintf("发布任务到队列失败: %v", err), true)
 		return nil, err
 	}
+	logger.Audit().Info("任务入队成功",
+		slog.String("task_id", taskID),
+		slog.String("goal", task.Goal),
+		slog.String("address", task.Address),
+		slog.Int("max_retries", task.MaxRetries),
+	)
 	return task, nil
 }
 

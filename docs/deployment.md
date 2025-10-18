@@ -59,3 +59,61 @@
 * 通过 `mysql` 客户端检查 `tasks` 表与 `schema_migrations` 表是否创建。
 * 调用 API 触发任务执行，确认记录写入 `tasks`。
 * 在日志中检查是否有连接失败或迁移错误。
+
+## 6. 可观测性与审计
+
+OpenMCP 默认开启结构化日志、审计日志轮转及核心指标导出，相关配置集中在 `observability` 节点：
+
+```jsonc
+"observability": {
+  "logging": {
+    "level": "info",
+    "format": "json",
+    "outputs": ["stdout"]
+  },
+  "metrics": {
+    "enabled": true,
+    "address": ""
+  },
+  "audit": {
+    "enabled": true,
+    "file": "../data/audit.log",
+    "max_size_mb": 100,
+    "max_backups": 7,
+    "max_age_days": 30
+  }
+}
+```
+
+### 日志
+
+* 应用日志遵循 JSON 结构化格式，字段包含时间戳、级别、消息及动态键值，便于在 Loki、Elasticsearch 等后端中检索。
+* `audit.log` 记录任务入队、执行成功或失败等关键行为，默认保存在数据目录（`runtime.data_dir`）下，可通过 `max_size_mb / max_backups / max_age_days` 控制滚动策略。
+* 若需同时输出到文件与标准输出，可在 `logging.outputs` 中追加路径，如 `"outputs": ["stdout", "../logs/openmcp.log"]`。
+
+### 指标
+
+* 指标采用 Prometheus 文本协议暴露，默认和 API 服务共用端口（`address` 为空时），路径为 `/metrics`。
+* 若希望在独立端口监听，设置 `observability.metrics.address`（例如 `":9090"`），Prometheus 可直接抓取 `http://<host>:9090/metrics`。
+* 已内置的指标包括：
+  * `openmcp_http_requests_total{handler,method,code}`：请求量。
+  * `openmcp_http_request_errors_total{handler,method}`：5xx 错误次数。
+  * `openmcp_http_request_duration_seconds`：请求延迟直方图。
+* 参考 Prometheus `scrape_config` 示例：
+
+  ```yaml
+  scrape_configs:
+    - job_name: openmcp
+      metrics_path: /metrics
+      static_configs:
+        - targets: ["openmcp.example.com:8080"]
+  ```
+
+### Grafana 仪表盘
+
+1. 在 Grafana 中添加 Prometheus 数据源，指向上述抓取地址。
+2. 创建仪表盘并使用以下查询：
+   * 请求速率：`rate(openmcp_http_requests_total[5m])`
+   * 错误率：`rate(openmcp_http_request_errors_total[5m])`
+   * P95 延迟：`histogram_quantile(0.95, sum(rate(openmcp_http_request_duration_seconds_bucket[5m])) by (le))`
+3. 可结合审计日志对异常任务进行追踪，实现闭环监控。
