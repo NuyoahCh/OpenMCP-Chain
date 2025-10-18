@@ -4,7 +4,8 @@
   },
   "storage": {
     "task_store": {
-      "driver": "memory"
+      "driver": "memory",
+      "retries": 3
     }
   },
   "llm": {
@@ -37,5 +38,9 @@
   },
   "runtime": {
     "data_dir": "../data"
+  },
+  "task_queue": {
+    "driver": "memory",
+    "worker": 4
   }
 }

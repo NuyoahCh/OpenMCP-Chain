@@ -15,6 +15,7 @@ import (
 
 // TaskRequest 描述了一个简单的智能体任务。
 type TaskRequest struct {
+	ID          string `json:"id,omitempty"`
 	Goal        string `json:"goal"`
 	ChainAction string `json:"chain_action"`
 	Address     string `json:"address"`

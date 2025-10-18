@@ -19,6 +19,7 @@ type Config struct {
 	Agent     AgentConfig     `json:"agent"`
 	Runtime   RuntimeConfig   `json:"runtime"`
 	Knowledge KnowledgeConfig `json:"knowledge"`
+	TaskQueue TaskQueueConfig `json:"task_queue"`
 }
 
 // ServerConfig 控制 API 服务的监听地址等参数。
@@ -33,8 +34,35 @@ type StorageConfig struct {
 
 // TaskStoreConfig 目前提供内存实现，后续可以切换到真正的 MySQL。
 type TaskStoreConfig struct {
-	Driver string `json:"driver"`
-	DSN    string `json:"dsn"`
+	Driver  string `json:"driver"`
+	DSN     string `json:"dsn"`
+	Retries int    `json:"retries"`
+}
+
+// TaskQueueConfig 描述异步任务队列。
+type TaskQueueConfig struct {
+	Driver   string            `json:"driver"`
+	Worker   int               `json:"worker"`
+	Redis    RedisQueueConfig  `json:"redis"`
+	RabbitMQ RabbitQueueConfig `json:"rabbitmq"`
+}
+
+// RedisQueueConfig 对应 Redis 队列。
+type RedisQueueConfig struct {
+	Address   string `json:"address"`
+	Password  string `json:"password"`
+	DB        int    `json:"db"`
+	Queue     string `json:"queue"`
+	BlockWait int    `json:"block_wait_seconds"`
+}
+
+// RabbitQueueConfig 描述 RabbitMQ 参数。
+type RabbitQueueConfig struct {
+	URL        string `json:"url"`
+	Queue      string `json:"queue"`
+	Prefetch   int    `json:"prefetch"`
+	Durable    bool   `json:"durable"`
+	AutoDelete bool   `json:"auto_delete"`
 }
 
 // LLMConfig 用于配置大模型推理的调用方式。
@@ -129,6 +157,9 @@ func (c *Config) applyDefaults(baseDir string) {
 	if c.Storage.TaskStore.Driver == "" {
 		c.Storage.TaskStore.Driver = "memory"
 	}
+	if c.Storage.TaskStore.Retries <= 0 {
+		c.Storage.TaskStore.Retries = 3
+	}
 
 	if c.LLM.Provider == "" {
 		c.LLM.Provider = "python_bridge"
@@ -158,6 +189,25 @@ func (c *Config) applyDefaults(baseDir string) {
 		c.Runtime.DataDir = filepath.Join(baseDir, "data")
 	} else if !filepath.IsAbs(c.Runtime.DataDir) {
 		c.Runtime.DataDir = filepath.Join(baseDir, c.Runtime.DataDir)
+	}
+
+	if c.TaskQueue.Driver == "" {
+		c.TaskQueue.Driver = "memory"
+	}
+	if c.TaskQueue.Worker <= 0 {
+		c.TaskQueue.Worker = 1
+	}
+	if c.TaskQueue.Redis.BlockWait <= 0 {
+		c.TaskQueue.Redis.BlockWait = 5
+	}
+	if c.TaskQueue.Redis.Queue == "" {
+		c.TaskQueue.Redis.Queue = "openmcp:tasks"
+	}
+	if c.TaskQueue.RabbitMQ.Queue == "" {
+		c.TaskQueue.RabbitMQ.Queue = "openmcp.tasks"
+	}
+	if c.TaskQueue.RabbitMQ.Prefetch <= 0 {
+		c.TaskQueue.RabbitMQ.Prefetch = c.TaskQueue.Worker
 	}
 
 	if c.Agent.MemoryDepth <= 0 {
