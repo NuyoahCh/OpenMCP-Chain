@@ -4,6 +4,8 @@ import type { CreateTaskRequest } from "../types";
 interface TaskFormProps {
   onSubmit: (payload: CreateTaskRequest) => Promise<void>;
   submitting?: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
   loading?: boolean;
 }
 
@@ -19,6 +21,7 @@ const QUICK_GOALS = [
   "生成链上地址的近期 Gas 消耗速览"
 ];
 
+export default function TaskForm({ onSubmit, submitting, disabled, disabledReason }: TaskFormProps) {
 export default function TaskForm({ onSubmit, submitting }: TaskFormProps) {
 export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
   const [goal, setGoal] = useState("查询账户余额");
@@ -35,12 +38,19 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
     return suggestions[Math.floor(Math.random() * suggestions.length)];
   }, []);
 
+  const submitDisabled = submitting || !goal.trim() || Boolean(disabled);
   const submitDisabled = submitting || !goal.trim();
 
   const applyQuickGoal = (text: string) => {
     setGoal(text);
     setErrors(null);
   };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (disabled) {
+      return;
+    }
   const [metadata, setMetadata] = useState(
     () => JSON.stringify({ project: "demo" }, null, 2)
   );
@@ -94,6 +104,7 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
   };
 
   return (
+    <form className={`card${disabled ? " card-disabled" : ""}`} onSubmit={handleSubmit}>
     <form className="card" onSubmit={handleSubmit}>
       <h2 className="section-title">发起一次智能体任务</h2>
       <p className="helper-text" style={{ marginTop: "-0.35rem", marginBottom: "1.35rem" }}>
@@ -106,6 +117,7 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
             type="button"
             className="chip"
             onClick={() => applyQuickGoal(item)}
+            disabled={disabled}
           >
             {item}
           </button>
@@ -121,6 +133,10 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
               setGoal(event.target.value);
               setErrors(null);
             }}
+            rows={3}
+            placeholder="描述你希望 Agent 完成的操作"
+            required
+            disabled={disabled}
             onChange={(event) => setGoal(event.target.value)}
             rows={3}
             placeholder="描述你希望 Agent 完成的操作"
@@ -139,6 +155,7 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
               setChainAction(event.target.value);
               setErrors(null);
             }}
+            disabled={disabled}
             onChange={(event) => setChainAction(event.target.value)}
           >
             {CHAIN_TEMPLATES.map((option) => (
@@ -158,6 +175,11 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
               setAddress(event.target.value);
               setErrors(null);
             }}
+            placeholder="0x..."
+            disabled={disabled}
+          />
+          <span className="helper-text">某些链上操作需要提供地址或合约。</span>
+        </div>
             onChange={(event) => setAddress(event.target.value)}
             placeholder="0x..."
           />
@@ -180,6 +202,14 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
           {errors}
         </p>
       ) : null}
+      {disabled && disabledReason ? (
+        <p className="helper-text" style={{ color: "#f97316", marginTop: errors ? "0.35rem" : "0" }}>
+          {disabledReason}
+        </p>
+      ) : null}
+      <div className="actions" style={{ marginTop: "1.5rem" }}>
+        <button type="submit" className="primary" disabled={submitDisabled}>
+          {submitting ? "提交中..." : "提交任务"}
       <div className="actions" style={{ marginTop: "1.5rem" }}>
         <button type="submit" className="primary" disabled={submitDisabled}>
           {submitting ? "提交中..." : "提交任务"}

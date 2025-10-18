@@ -1,10 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
+import {
+  UnauthorizedError,
+  createTask,
+  fetchTask,
+  listTasks,
+  statusLabel,
+  verifyApiConnection
+} from "./api";
 import { createTask, fetchTask, listTasks, statusLabel, verifyApiConnection } from "./api";
 import TaskForm from "./components/TaskForm";
 import TaskList from "./components/TaskList";
 import TaskDetails from "./components/TaskDetails";
 import StatusSummary from "./components/StatusSummary";
 import ConnectionSettings from "./components/ConnectionSettings";
+import AuthPanel from "./components/AuthPanel";
+import { useAuth, type AuthCredentials } from "./hooks/useAuth";
+import { useApiBaseUrl } from "./hooks/useApiBaseUrl";
 import { useApiBaseUrl } from "./hooks/useApiBaseUrl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createTask, fetchTask, listTasks, statusLabel } from "./api";
@@ -42,6 +53,10 @@ export default function App() {
   const [lastSynced, setLastSynced] = useState<number | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<"idle" | "success" | "error">("idle");
   const [testingConnection, setTestingConnection] = useState(false);
+  const [requiresAuth, setRequiresAuth] = useState(false);
+  const { baseUrl, defaultBaseUrl, update, reset } = useApiBaseUrl();
+  const { toast, showToast } = useToast();
+  const { auth, login, logout, isExpired } = useAuth();
   const { baseUrl, defaultBaseUrl, update, reset } = useApiBaseUrl();
   const { toast, showToast } = useToast();
 
@@ -57,6 +72,7 @@ export default function App() {
         setFetchError(null);
         setLastSynced(Date.now());
         setConnectionStatus("success");
+        setRequiresAuth(false);
         setActiveTask((current) => {
           if (!current) {
             return normalized[0] ?? null;
@@ -66,6 +82,27 @@ export default function App() {
         });
         return true;
       } catch (error) {
+        if (error instanceof UnauthorizedError) {
+          const message = error.message || "后端要求身份认证，请先登录";
+          setFetchError(message);
+          setRequiresAuth(true);
+          setConnectionStatus("error");
+          if (!options?.silent) {
+            showToast({
+              title: "需要登录",
+              message
+            });
+          }
+        } else {
+          const message = error instanceof Error ? error.message : "无法同步任务列表";
+          setFetchError(message);
+          setConnectionStatus("error");
+          if (!options?.silent) {
+            showToast({
+              title: "同步失败",
+              message
+            });
+          }
         const message = error instanceof Error ? error.message : "无法同步任务列表";
         setFetchError(message);
         setConnectionStatus("error");
@@ -89,6 +126,13 @@ export default function App() {
   useEffect(() => {
     refreshTasks({ silent: true });
     const interval = setInterval(() => {
+      if (requiresAuth && (!auth || isExpired)) {
+        return;
+      }
+      refreshTasks({ silent: true });
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [auth, isExpired, refreshTasks, requiresAuth]);
       refreshTasks({ silent: true });
     }, 15000);
     return () => clearInterval(interval);
@@ -116,6 +160,19 @@ export default function App() {
         }
       } catch (error) {
         console.error("轮询任务失败", error);
+        if (error instanceof UnauthorizedError) {
+          setRequiresAuth(true);
+          setConnectionStatus("error");
+          showToast({
+            title: "需要登录",
+            message: error.message || "会话失效，请重新登录"
+          });
+        } else {
+          showToast({
+            title: "任务轮询失败",
+            message: error instanceof Error ? error.message : "未知错误"
+          });
+        }
         showToast({
           title: "任务轮询失败",
           message: error instanceof Error ? error.message : "未知错误"
@@ -198,6 +255,23 @@ export default function App() {
           message: `ID: ${response.task_id}`
         });
         await refreshTasks({ silent: true });
+        pollTask(response.task_id);
+      } catch (error) {
+        if (error instanceof UnauthorizedError) {
+          setRequiresAuth(true);
+          setConnectionStatus("error");
+          showToast({
+            title: "需要登录",
+            message: error.message || "会话失效，请重新登录"
+          });
+        } else {
+          showToast({
+            title: "提交失败",
+            message: error instanceof Error ? error.message : "未知错误"
+          });
+        }
+      } finally {
+        setSubmitting(false);
         await refreshTasks();
         pollTask(response.task_id);
       } catch (error) {
@@ -259,6 +333,18 @@ export default function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "无法连接后端";
       setConnectionStatus("error");
+      if (error instanceof UnauthorizedError) {
+        setRequiresAuth(true);
+        showToast({
+          title: "需要登录",
+          message
+        });
+      } else {
+        showToast({
+          title: "连接失败",
+          message
+        });
+      }
       showToast({
         title: "连接失败",
         message
@@ -267,6 +353,24 @@ export default function App() {
       setTestingConnection(false);
     }
   }, [baseUrl, refreshTasks, showToast]);
+
+  const handleLogin = useCallback(
+    async (credentials: AuthCredentials) => {
+      await login(credentials);
+      setRequiresAuth(false);
+      await refreshTasks({ manual: true, silent: true });
+    },
+    [login, refreshTasks]
+  );
+
+  const isSessionReady = Boolean(auth) && !isExpired;
+  const showAuthWarning = requiresAuth && (!auth || isExpired);
+  const formDisabled = requiresAuth && !isSessionReady;
+  const formDisabledReason = !auth
+    ? "后端要求身份认证，请先登录"
+    : isExpired
+      ? "登录已过期，请重新获取访问令牌"
+      : undefined;
   const activeTaskId = activeTask?.id ?? null;
   const sortedTasks = useMemo(() => {
     return [...tasks].sort((a, b) => b.updated_at - a.updated_at);
@@ -294,6 +398,37 @@ export default function App() {
             通过可视化界面调度智能体任务，追踪大模型推理与链上观测的完整过程。实时掌握执行状态，快速定位异常。
           </p>
         </div>
+        <div className="header-widgets">
+          <ConnectionSettings
+            baseUrl={baseUrl}
+            defaultBaseUrl={defaultBaseUrl}
+            onUpdate={handleUpdateBaseUrl}
+            onReset={handleResetBaseUrl}
+            onTest={handleTestConnection}
+            testing={testingConnection}
+            status={connectionStatus}
+            lastSynced={lastSynced}
+            refreshing={refreshing}
+            onRefresh={handleManualRefresh}
+            fetchError={fetchError}
+          />
+          <AuthPanel
+            auth={auth}
+            isExpired={isExpired}
+            requiresAuth={requiresAuth}
+            onLogin={handleLogin}
+            onLogout={logout}
+          />
+        </div>
+      </header>
+
+      <div className="glow-border" style={{ marginBottom: "2.5rem" }}>
+        <TaskForm
+          onSubmit={handleSubmit}
+          submitting={submitting}
+          disabled={formDisabled}
+          disabledReason={showAuthWarning ? formDisabledReason : undefined}
+        />
         <ConnectionSettings
           baseUrl={baseUrl}
           defaultBaseUrl={defaultBaseUrl}

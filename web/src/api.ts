@@ -1,8 +1,44 @@
+import type {
+  AuthTokenResponse,
+  CreateTaskRequest,
+  CreateTaskResponse,
+  TaskItem
+} from "./types";
 import type { CreateTaskRequest, CreateTaskResponse, TaskItem } from "./types";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:8080";
 const STORAGE_KEY = "openmcp.console.apiBaseUrl";
 const DEFAULT_TIMEOUT = 20_000;
+const AUTH_STORAGE_KEY = "openmcp.console.auth";
+
+export class UnauthorizedError extends Error {
+  constructor(message?: string) {
+    super(message || "未授权，请重新登录");
+    this.name = "UnauthorizedError";
+  }
+}
+
+export interface AuthState {
+  accessToken: string;
+  tokenType: string;
+  expiresAt?: number;
+  refreshToken?: string;
+  refreshExpiresAt?: number;
+  username?: string;
+  scope?: string[];
+}
+
+interface AuthCredentials {
+  username: string;
+  password: string;
+  scope?: string[];
+}
+
+type AuthListener = (state: AuthState | null) => void;
+
+const authListeners = new Set<AuthListener>();
+
+let authState: AuthState | null = null;
 
 function normalizeBaseUrl(input: string): string {
   const trimmed = input.trim();
@@ -46,6 +82,58 @@ if (typeof window !== "undefined") {
   }
 }
 
+function persistAuthState(next: AuthState | null) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (!next) {
+    window.localStorage.removeItem(AUTH_STORAGE_KEY);
+    return;
+  }
+  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next));
+}
+
+function notifyAuthListeners() {
+  for (const listener of authListeners) {
+    listener(authState);
+  }
+}
+
+function setAuthState(next: AuthState | null) {
+  authState = next;
+  persistAuthState(next);
+  notifyAuthListeners();
+}
+
+function loadAuthState(): AuthState | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const stored = window.localStorage.getItem(AUTH_STORAGE_KEY);
+  if (!stored) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(stored) as AuthState;
+    if (parsed && parsed.expiresAt && parsed.expiresAt > 0 && parsed.expiresAt <= Date.now()) {
+      window.localStorage.removeItem(AUTH_STORAGE_KEY);
+      return null;
+    }
+    return parsed;
+  } catch (error) {
+    console.warn("无法解析存储的认证信息，已清除", error);
+    window.localStorage.removeItem(AUTH_STORAGE_KEY);
+    return null;
+  }
+}
+
+if (typeof window !== "undefined") {
+  authState = loadAuthState();
+}
+
+interface RequestOptions extends RequestInit {
+  timeout?: number;
+  skipAuth?: boolean;
 interface RequestOptions extends RequestInit {
   timeout?: number;
 }
@@ -56,6 +144,7 @@ function buildUrl(path: string): string {
 }
 
 async function fetchWithTimeout(input: string, options: RequestOptions = {}): Promise<Response> {
+  const { timeout = DEFAULT_TIMEOUT, signal, skipAuth, ...init } = options;
   const { timeout = DEFAULT_TIMEOUT, signal, ...init } = options;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
@@ -66,6 +155,21 @@ async function fetchWithTimeout(input: string, options: RequestOptions = {}): Pr
       signal.addEventListener("abort", () => controller.abort(), { once: true });
     }
   }
+  const headers = new Headers(init.headers ?? {});
+  if (!skipAuth) {
+    const auth = getAuthState();
+    if (auth && !isAuthExpired(auth)) {
+      headers.set("Authorization", `${auth.tokenType || "Bearer"} ${auth.accessToken}`);
+    } else if (auth && isAuthExpired(auth)) {
+      clearAuth();
+    }
+  }
+  try {
+    const response = await fetch(input, { ...init, headers, signal: controller.signal });
+    if (response.status === 401) {
+      clearAuth();
+    }
+    return response;
   try {
     return await fetch(input, { ...init, signal: controller.signal });
   } finally {
@@ -86,6 +190,9 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
       } catch (error) {
         // ignore json parse error
       }
+    }
+    if (response.status === 401) {
+      throw new UnauthorizedError(message || "未授权，请重新登录");
     }
     throw new Error(message);
   }
@@ -123,6 +230,67 @@ export function setApiBaseUrl(value?: string | null): string {
   return apiBaseUrl;
 }
 
+export function getAuthState(): AuthState | null {
+  return authState;
+}
+
+export function subscribeAuth(listener: AuthListener): () => void {
+  authListeners.add(listener);
+  listener(authState);
+  return () => {
+    authListeners.delete(listener);
+  };
+}
+
+export function isAuthExpired(state: AuthState | null): boolean {
+  if (!state) {
+    return false;
+  }
+  return Boolean(state.expiresAt && state.expiresAt <= Date.now());
+}
+
+export function clearAuth(): void {
+  setAuthState(null);
+}
+
+export async function authenticate(credentials: AuthCredentials): Promise<AuthState> {
+  const response = await fetchWithTimeout(buildUrl("/api/v1/auth/token"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      grant_type: "password",
+      username: credentials.username,
+      password: credentials.password,
+      scope: credentials.scope
+    }),
+    skipAuth: true
+  });
+  const data = await parseJsonResponse<AuthTokenResponse>(response);
+  const expiresAt = data.expires_in ? Date.now() + data.expires_in * 1000 : undefined;
+  const refreshExpiresAt = data.refresh_expires_in
+    ? Date.now() + data.refresh_expires_in * 1000
+    : undefined;
+  const next: AuthState = {
+    accessToken: data.access_token,
+    tokenType: data.token_type || "Bearer",
+    refreshToken: data.refresh_token,
+    expiresAt,
+    refreshExpiresAt,
+    scope: Array.isArray(data.scope) ? data.scope : data.scope ? data.scope.split(" ") : undefined,
+    username: credentials.username
+  };
+  setAuthState(next);
+  return next;
+}
+
+export function logout(): void {
+  clearAuth();
+}
+
+export async function createTask(payload: CreateTaskRequest): Promise<CreateTaskResponse> {
+  const response = await fetchWithTimeout(buildUrl("/api/v1/tasks"), {
 export async function createTask(payload: CreateTaskRequest): Promise<CreateTaskResponse> {
   const response = await fetchWithTimeout(buildUrl("/api/v1/tasks"), {
 

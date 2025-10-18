@@ -48,3 +48,12 @@ export interface CreateTaskResponse {
   attempts: number;
   max_retries: number;
 }
+
+export interface AuthTokenResponse {
+  access_token: string;
+  expires_in?: number;
+  refresh_token?: string;
+  refresh_expires_in?: number;
+  token_type?: string;
+  scope?: string | string[];
+}
