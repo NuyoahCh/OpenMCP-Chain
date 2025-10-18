@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io/fs"
 	"sort"
@@ -19,15 +20,15 @@ type migrationFile struct {
 	statements []string
 }
 
-func (s *SQLTaskRepository) runMigrations(ctx context.Context) error {
-	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+func runMigrations(ctx context.Context, db *sql.DB) error {
+	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
         version VARCHAR(32) NOT NULL PRIMARY KEY,
         applied_at BIGINT NOT NULL
 )`); err != nil {
 		return fmt.Errorf("创建 schema_migrations 表失败: %w", err)
 	}
 
-	applied, err := s.loadAppliedVersions(ctx)
+	applied, err := loadAppliedVersions(ctx, db)
 	if err != nil {
 		return err
 	}
@@ -41,15 +42,15 @@ func (s *SQLTaskRepository) runMigrations(ctx context.Context) error {
 		if _, ok := applied[migration.version]; ok {
 			continue
 		}
-		if err := s.applyMigration(ctx, migration); err != nil {
+		if err := applyMigration(ctx, db, migration); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *SQLTaskRepository) loadAppliedVersions(ctx context.Context) (map[string]struct{}, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT version FROM schema_migrations`)
+func loadAppliedVersions(ctx context.Context, db *sql.DB) (map[string]struct{}, error) {
+	rows, err := db.QueryContext(ctx, `SELECT version FROM schema_migrations`)
 	if err != nil {
 		return nil, fmt.Errorf("查询 schema_migrations 失败: %w", err)
 	}
@@ -69,8 +70,8 @@ func (s *SQLTaskRepository) loadAppliedVersions(ctx context.Context) (map[string
 	return applied, nil
 }
 
-func (s *SQLTaskRepository) applyMigration(ctx context.Context, migration migrationFile) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+func applyMigration(ctx context.Context, db *sql.DB, migration migrationFile) error {
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("开启迁移事务失败: %w", err)
 	}

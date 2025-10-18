@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 )
@@ -367,44 +366,16 @@ type Config struct {
 
 // NewSQLTaskRepository 创建连接池并初始化数据表。
 func NewSQLTaskRepository(ctx context.Context, cfg Config) (*SQLTaskRepository, error) {
-	if strings.TrimSpace(cfg.DSN) == "" {
-		return nil, fmt.Errorf("MySQL DSN 不能为空")
-	}
-
-	db, err := sql.Open("mysql", cfg.DSN)
+	db, err := openDatabase(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("连接 MySQL 失败: %w", err)
+		return nil, err
 	}
 
-	if cfg.MaxOpenConns > 0 {
-		db.SetMaxOpenConns(cfg.MaxOpenConns)
-	} else {
-		db.SetMaxOpenConns(20)
-	}
-	if cfg.MaxIdleConns > 0 {
-		db.SetMaxIdleConns(cfg.MaxIdleConns)
-	} else {
-		db.SetMaxIdleConns(10)
-	}
-	if cfg.ConnMaxLifetime > 0 {
-		db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
-	} else {
-		db.SetConnMaxLifetime(30 * time.Minute)
-	}
-	if cfg.ConnMaxIdleTime > 0 {
-		db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
-	}
-
-	if err := db.PingContext(ctx); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("无法连接到 MySQL: %w", err)
-	}
-
-	repo := &SQLTaskRepository{db: db}
-	if err := repo.runMigrations(ctx); err != nil {
+	if err := runMigrations(ctx, db); err != nil {
 		db.Close()
 		return nil, err
 	}
+	repo := &SQLTaskRepository{db: db}
 	return repo, nil
 }
 
