@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useMemo, useState } from "react";
 import type { AuthState } from "../api";
 import type { AuthCredentials } from "../hooks/useAuth";
@@ -44,6 +45,18 @@ export default function AuthPanel({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [remaining, setRemaining] = useState(() => formatRemaining(auth?.expiresAt));
+
+  useEffect(() => {
+    setRemaining(formatRemaining(auth?.expiresAt));
+    if (!auth?.expiresAt) {
+      return;
+    }
+    const timer = setInterval(() => {
+      setRemaining(formatRemaining(auth?.expiresAt));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [auth?.expiresAt]);
 
   const remaining = useMemo(() => formatRemaining(auth?.expiresAt), [auth?.expiresAt]);
 
@@ -113,12 +126,34 @@ export default function AuthPanel({
               权限范围: {auth.scope.join(", ")}
             </p>
           ) : null}
+          <div className="actions" style={{ marginTop: "0.5rem", flexWrap: "wrap" }}>
           <div className="actions" style={{ marginTop: "0.5rem" }}>
             <button type="button" className="secondary" onClick={handleLogout}>
               退出登录
             </button>
             <button type="button" className="ghost" onClick={copyToken} disabled={!canCopy}>
               复制访问令牌
+            </button>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => {
+                if (!auth) {
+                  return;
+                }
+                navigator?.clipboard
+                  ?.writeText(JSON.stringify(auth, null, 2))
+                  .then(() => {
+                    setError(null);
+                    setInfo("认证详情已复制");
+                  })
+                  .catch((error) =>
+                    setError(error instanceof Error ? error.message : "复制失败")
+                  );
+              }}
+              disabled={!canCopy}
+            >
+              复制会话详情
             </button>
           </div>
           {isExpired ? (

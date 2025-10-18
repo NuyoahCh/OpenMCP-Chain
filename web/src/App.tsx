@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCallback, useEffect, useState } from "react";
 import {
   UnauthorizedError,
@@ -7,6 +8,8 @@ import {
   statusLabel,
   verifyApiConnection
 } from "./api";
+import TaskForm from "./components/TaskForm";
+import TaskList, { type TaskStatusFilter } from "./components/TaskList";
 import { createTask, fetchTask, listTasks, statusLabel, verifyApiConnection } from "./api";
 import TaskForm from "./components/TaskForm";
 import TaskList from "./components/TaskList";
@@ -16,6 +19,7 @@ import ConnectionSettings from "./components/ConnectionSettings";
 import AuthPanel from "./components/AuthPanel";
 import { useAuth, type AuthCredentials } from "./hooks/useAuth";
 import { useApiBaseUrl } from "./hooks/useApiBaseUrl";
+import { useNetworkStatus } from "./hooks/useNetworkStatus";
 import { useApiBaseUrl } from "./hooks/useApiBaseUrl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createTask, fetchTask, listTasks, statusLabel } from "./api";
@@ -54,6 +58,50 @@ export default function App() {
   const [connectionStatus, setConnectionStatus] = useState<"idle" | "success" | "error">("idle");
   const [testingConnection, setTestingConnection] = useState(false);
   const [requiresAuth, setRequiresAuth] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<TaskStatusFilter>("all");
+  const { baseUrl, defaultBaseUrl, update, reset } = useApiBaseUrl();
+  const { toast, showToast } = useToast();
+  const { auth, login, logout, isExpired } = useAuth();
+  const { isOnline, lastChanged, connectionType } = useNetworkStatus();
+  const networkChangeRef = useRef(false);
+
+  const filteredTasks = useMemo(() => {
+    if (statusFilter === "all") {
+      return tasks;
+    }
+    return tasks.filter((task) => task.status === statusFilter);
+  }, [statusFilter, tasks]);
+
+  useEffect(() => {
+    setActiveTask((current) => {
+      if (!filteredTasks.length) {
+        return null;
+      }
+      if (current && filteredTasks.some((task) => task.id === current.id)) {
+        return current;
+      }
+      return filteredTasks[0];
+    });
+  }, [filteredTasks]);
+
+  const refreshTasks = useCallback(
+    async (options?: { manual?: boolean; silent?: boolean }) => {
+      if (!isOnline) {
+        const message = "当前设备处于离线状态，无法刷新数据";
+        setFetchError(message);
+        setConnectionStatus("error");
+        if (!options?.silent) {
+          showToast({
+            title: "网络不可用",
+            message
+          });
+        }
+        setInitialLoading(false);
+        if (options?.manual) {
+          setRefreshing(false);
+        }
+        return false;
+      }
   const { baseUrl, defaultBaseUrl, update, reset } = useApiBaseUrl();
   const { toast, showToast } = useToast();
   const { auth, login, logout, isExpired } = useAuth();
@@ -120,6 +168,29 @@ export default function App() {
         setInitialLoading(false);
       }
     },
+    [isOnline, showToast]
+  );
+
+  useEffect(() => {
+    if (!networkChangeRef.current) {
+      networkChangeRef.current = true;
+      return;
+    }
+    if (!isOnline) {
+      showToast({
+        title: "离线模式",
+        message: "检测到网络不可用，功能将暂时受限"
+      });
+    } else {
+      showToast({
+        title: "网络已恢复",
+        message: "自动重新同步任务列表"
+      });
+      refreshTasks({ silent: true });
+    }
+  }, [isOnline, refreshTasks, showToast]);
+
+  useEffect(() => {
     [showToast]
   );
 
@@ -129,6 +200,13 @@ export default function App() {
       if (requiresAuth && (!auth || isExpired)) {
         return;
       }
+      if (!isOnline) {
+        return;
+      }
+      refreshTasks({ silent: true });
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [auth, isExpired, isOnline, refreshTasks, requiresAuth]);
       refreshTasks({ silent: true });
     }, 15000);
     return () => clearInterval(interval);
@@ -188,6 +266,14 @@ export default function App() {
   const handleSubmit = useCallback(
     async (payload: CreateTaskRequest) => {
       setSubmitting(true);
+      try {
+        if (!isOnline) {
+          showToast({
+            title: "网络不可用",
+            message: "当前处于离线状态，无法提交任务"
+          });
+          return;
+        }
   const [loading, setLoading] = useState(false);
   const [activeTask, setActiveTask] = useState<TaskItem | null>(null);
   const [isPolling, setIsPolling] = useState(false);
@@ -272,6 +358,27 @@ export default function App() {
         }
       } finally {
         setSubmitting(false);
+      }
+    },
+    [isOnline, pollTask, refreshTasks, showToast]
+  );
+
+  const handleManualRefresh = useCallback(() => {
+    if (!isOnline) {
+      showToast({
+        title: "网络不可用",
+        message: "恢复网络后再尝试刷新"
+      });
+      return;
+    }
+    refreshTasks({ manual: true });
+  }, [isOnline, refreshTasks, showToast]);
+
+  const handleUpdateBaseUrl = useCallback(
+    async (value: string) => {
+      if (!isOnline) {
+        throw new Error("当前离线，请连接网络后重试");
+      }
         await refreshTasks();
         pollTask(response.task_id);
       } catch (error) {
@@ -304,6 +411,13 @@ export default function App() {
         message: next
       });
     },
+    [isOnline, refreshTasks, showToast, update]
+  );
+
+  const handleResetBaseUrl = useCallback(async () => {
+    if (!isOnline) {
+      throw new Error("当前离线，请连接网络后重试");
+    }
     [refreshTasks, showToast, update]
   );
 
@@ -318,6 +432,16 @@ export default function App() {
       title: "已恢复默认地址",
       message: next
     });
+  }, [isOnline, refreshTasks, reset, showToast]);
+
+  const handleTestConnection = useCallback(async () => {
+    if (!isOnline) {
+      showToast({
+        title: "网络不可用",
+        message: "请检查网络连接后再试"
+      });
+      return;
+    }
   }, [refreshTasks, reset, showToast]);
 
   const handleTestConnection = useCallback(async () => {
@@ -345,6 +469,20 @@ export default function App() {
           message
         });
       }
+    } finally {
+      setTestingConnection(false);
+    }
+  }, [baseUrl, isOnline, refreshTasks, showToast]);
+
+  const handleLogin = useCallback(
+    async (credentials: AuthCredentials) => {
+      if (!isOnline) {
+        showToast({
+          title: "网络不可用",
+          message: "当前离线，无法登录"
+        });
+        throw new Error("当前处于离线状态");
+      }
       showToast({
         title: "连接失败",
         message
@@ -360,11 +498,67 @@ export default function App() {
       setRequiresAuth(false);
       await refreshTasks({ manual: true, silent: true });
     },
+    [isOnline, login, refreshTasks, showToast]
     [login, refreshTasks]
   );
 
   const isSessionReady = Boolean(auth) && !isExpired;
   const showAuthWarning = requiresAuth && (!auth || isExpired);
+  const formDisabled = (requiresAuth && !isSessionReady) || !isOnline;
+  const offlineReason = !isOnline
+    ? `当前设备已离线${
+        lastChanged ? `（${new Date(lastChanged).toLocaleTimeString()} 检测）` : ""
+      }`
+    : undefined;
+  const formDisabledReason = offlineReason
+    ? offlineReason
+    : !auth
+        ? "后端要求身份认证，请先登录"
+        : isExpired
+          ? "登录已过期，请重新获取访问令牌"
+          : undefined;
+
+  const handleExport = useCallback(() => {
+    const targetTasks = statusFilter === "all" ? tasks : tasks.filter((task) => task.status === statusFilter);
+    if (!targetTasks.length || typeof window === "undefined") {
+      showToast({
+        title: "暂无数据",
+        message: "没有可导出的任务记录"
+      });
+      return;
+    }
+    const blob = new Blob([JSON.stringify(targetTasks, null, 2)], {
+      type: "application/json;charset=utf-8"
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    anchor.href = url;
+    anchor.download = `openmcp-tasks-${timestamp}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    showToast({
+      title: "已导出任务", 
+      message: `共 ${targetTasks.length} 条记录`
+    });
+  }, [showToast, statusFilter, tasks]);
+
+  const lastNetworkChange = useMemo(() => {
+    if (!lastChanged) {
+      return null;
+    }
+    const date = new Date(lastChanged);
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+  }, [lastChanged]);
+
+  return (
+    <main>
+      {!isOnline ? (
+        <div className="banner banner-offline">
+          <strong>离线模式：</strong> 检测到网络不可用，任务轮询与提交将暂停。
+          {lastNetworkChange ? <span>最近检测：{lastNetworkChange}</span> : null}
+        </div>
+      ) : null}
   const formDisabled = requiresAuth && !isSessionReady;
   const formDisabledReason = !auth
     ? "后端要求身份认证，请先登录"
@@ -411,6 +605,8 @@ export default function App() {
             refreshing={refreshing}
             onRefresh={handleManualRefresh}
             fetchError={fetchError}
+            isOnline={isOnline}
+            connectionType={connectionType}
           />
           <AuthPanel
             auth={auth}
@@ -451,6 +647,7 @@ export default function App() {
       <StatusSummary tasks={tasks} />
 
       <TaskList
+        tasks={filteredTasks}
         tasks={tasks}
         activeTaskId={activeTask?.id}
         loading={initialLoading}
@@ -477,6 +674,12 @@ export default function App() {
           setActiveTask(task);
           pollTask(task.id);
         }}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        onExport={handleExport}
+      />
+
+      {activeTask ? <TaskDetails task={activeTask} isPolling={isPolling} /> : null}
       />
 
       {activeTask ? <TaskDetails task={activeTask} isPolling={isPolling} /> : null}

@@ -12,6 +12,8 @@ interface ConnectionSettingsProps {
   refreshing: boolean;
   onRefresh: () => void;
   fetchError?: string | null;
+  isOnline: boolean;
+  connectionType?: string | null;
 }
 
 function formatSyncTime(lastSynced: number | null): string {
@@ -33,6 +35,9 @@ export default function ConnectionSettings({
   lastSynced,
   refreshing,
   onRefresh,
+  fetchError,
+  isOnline,
+  connectionType
   fetchError
 }: ConnectionSettingsProps) {
   const [value, setValue] = useState(baseUrl);
@@ -133,6 +138,9 @@ export default function ConnectionSettings({
         </span>
         <span>
           <strong>最近同步:</strong> {formatSyncTime(lastSynced)}
+        </span>
+        <span>
+          <strong>网络:</strong> {isOnline ? `在线${connectionType ? ` · ${connectionType}` : ""}` : "离线"}
         </span>
         <button type="button" className="link" onClick={onRefresh} disabled={refreshing}>
           {refreshing ? "同步中..." : "立即刷新"}

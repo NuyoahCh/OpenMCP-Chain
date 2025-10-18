@@ -1,4 +1,7 @@
 import { formatTimestamp, statusClassName, statusLabel } from "../api";
+import type { TaskItem, TaskStatus } from "../types";
+
+export type TaskStatusFilter = "all" | TaskStatus;
 import type { TaskItem } from "../types";
 
 interface TaskListProps {
@@ -8,6 +11,30 @@ interface TaskListProps {
   loading?: boolean;
   error?: string | null;
   onRetry?: () => void;
+  statusFilter?: TaskStatusFilter;
+  onStatusFilterChange?: (value: TaskStatusFilter) => void;
+  onExport?: () => void;
+}
+
+const STATUS_OPTIONS: Array<{ value: TaskStatusFilter; label: string }> = [
+  { value: "all", label: "全部" },
+  { value: "pending", label: "等待执行" },
+  { value: "running", label: "执行中" },
+  { value: "succeeded", label: "已完成" },
+  { value: "failed", label: "失败" }
+];
+
+export default function TaskList({
+  tasks,
+  onSelect,
+  activeTaskId,
+  loading,
+  error,
+  onRetry,
+  statusFilter = "all",
+  onStatusFilterChange,
+  onExport
+}: TaskListProps) {
 }
 
 export default function TaskList({ tasks, onSelect, activeTaskId, loading, error, onRetry }: TaskListProps) {
@@ -49,6 +76,11 @@ export default function TaskList({ tasks, onSelect, activeTaskId }: TaskListProp
     return (
       <div className="card">
         <h2 className="section-title">最新任务</h2>
+        <p className="helper-text">
+          {statusFilter !== "all"
+            ? "当前筛选条件下暂无记录，尝试切换其他状态。"
+            : "暂无历史记录，提交任务后可查看执行轨迹。"}
+        </p>
         <p className="helper-text">暂无历史记录，提交任务后可查看执行轨迹。</p>
       </div>
     );
@@ -56,6 +88,27 @@ export default function TaskList({ tasks, onSelect, activeTaskId }: TaskListProp
 
   return (
     <div className="card">
+      <div className="section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span>最新任务</span>
+        <span className="helper-text">自动同步最近 {tasks.length} 条记录</span>
+      </div>
+      <div className="list-toolbar">
+        <label htmlFor="task-status-filter">状态筛选</label>
+        <select
+          id="task-status-filter"
+          value={statusFilter}
+          onChange={(event) => onStatusFilterChange?.(event.target.value as TaskStatusFilter)}
+        >
+          {STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <button type="button" className="ghost" onClick={onExport} disabled={!tasks.length}>
+          导出 JSON
+        </button>
+      </div>
       <div className="section-title" style={{ display: "flex", justifyContent: "space-between" }}>
         <span>最新任务</span>
         <span className="helper-text">自动同步最近 {tasks.length} 条记录</span>

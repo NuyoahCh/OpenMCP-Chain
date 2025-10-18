@@ -44,6 +44,24 @@ main {
   opacity: 0.75;
 }
 
+.banner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.25rem;
+  border-radius: 16px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(239, 68, 68, 0.15);
+  color: #fecaca;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.banner-offline strong {
+  color: #fca5a5;
+}
+
 .glow-border {
   position: relative;
   border-radius: 24px;
@@ -304,6 +322,27 @@ button.link:hover {
 .helper-text {
   font-size: 0.8rem;
   color: rgba(148, 163, 184, 0.75);
+}
+
+.list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.list-toolbar label {
+  font-size: 0.85rem;
+  color: rgba(226, 232, 240, 0.78);
+}
+
+.list-toolbar select {
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.6);
+  color: #e2e8f0;
 }
 
 .header {
