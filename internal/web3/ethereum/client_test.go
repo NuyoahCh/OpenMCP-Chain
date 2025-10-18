@@ -2,6 +2,7 @@ package ethereum
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	"testing"
 	"time"
@@ -18,8 +19,9 @@ import (
 )
 
 const (
-	simpleContractABI = "[]"
-	simpleContractBin = "0x6006600c60003960066000f360006000a000"
+	simpleContractABI        = "[]"
+	simpleContractBin        = "0x6027600c60003960276000f37f0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2060006000a100"
+	simpleContractEventTopic = "0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
 )
 
 func TestClientDeploySubscribeBatch(t *testing.T) {
@@ -92,13 +94,27 @@ func TestClientDeploySubscribeBatch(t *testing.T) {
 		t.Fatalf("expected 1 hash, got %d", len(hashes))
 	}
 
+	backend.Commit()
+
+	receipt, err := waitForReceipt(ctx, backend, signed.Hash())
+	if err != nil {
+		t.Fatalf("wait receipt: %v", err)
+	}
+	if len(receipt.Logs) == 0 {
+		t.Fatal("expected receipt to contain logs")
+	}
+
+	expectedTopic := common.HexToHash(simpleContractEventTopic)
 	logCh := sub.Logs()
 	select {
 	case log := <-logCh:
 		if log.Address != deployResult.ContractAddress {
 			t.Fatalf("unexpected log address %s", log.Address.Hex())
 		}
-	case <-time.After(2 * time.Second):
+		if len(log.Topics) == 0 || log.Topics[0] != expectedTopic {
+			t.Fatalf("unexpected log topics %+v", log.Topics)
+		}
+	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for event log")
 	}
 
@@ -108,6 +124,30 @@ func TestClientDeploySubscribeBatch(t *testing.T) {
 	}
 	if balanceHex == "" {
 		t.Fatal("expected balance result")
+	}
+}
+
+func waitForReceipt(ctx context.Context, backend *backends.SimulatedBackend, hash common.Hash) (*coretypes.Receipt, error) {
+	backend.Commit()
+
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		receipt, err := backend.TransactionReceipt(ctx, hash)
+		if err == nil && receipt != nil {
+			return receipt, nil
+		}
+		if err != nil && !errors.Is(err, gethcore.NotFound) {
+			return nil, err
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			backend.Commit()
+		}
 	}
 }
 
