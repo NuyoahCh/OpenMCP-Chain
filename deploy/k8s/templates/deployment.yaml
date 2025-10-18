@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "openmcp-chain.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "openmcp-chain.name" . }}
+    helm.sh/chart: {{ include "openmcp-chain.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "openmcp-chain.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "openmcp-chain.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "openmcp-chain.fullname" . }}
+      {{- else if .Values.serviceAccount.name }}
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      {{- end }}
+      containers:
+        - name: openmcpd
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: OPENMCP_CONFIG
+              value: /var/run/openmcp/config/openmcp.json
+            - name: OPENMCP_CONFIG_TEMPLATE
+              value: /etc/openmcp/config/openmcp.json.tmpl
+            - name: OPENMCP_DATA_DIR
+              value: {{ .Values.config.dataDir | quote }}
+            - name: OPENAI_BASE_URL
+              value: {{ .Values.config.openai.baseURL | quote }}
+            - name: OPENAI_MODEL
+              value: {{ .Values.config.openai.model | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.env.logLevel | quote }}
+            - name: MYSQL_HOST
+              value: {{ .Values.config.mysql.host | quote }}
+            - name: MYSQL_PORT
+              value: {{ printf "%d" .Values.config.mysql.port | quote }}
+            - name: MYSQL_DATABASE
+              value: {{ .Values.config.mysql.database | quote }}
+            - name: MYSQL_USER
+              value: {{ .Values.config.mysql.user | quote }}
+            - name: MYSQL_PASSWORD_FILE
+              value: /var/run/secrets/mysql/{{ .Values.secrets.mysql.key }}
+            - name: OPENAI_API_KEY_FILE
+              value: /var/run/secrets/openai/{{ .Values.secrets.openai.key }}
+          {{- range .Values.env.additional }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+          {{- end }}
+          volumeMounts:
+            - name: config-template
+              mountPath: /etc/openmcp/config
+            - name: config-output
+              mountPath: /var/run/openmcp/config
+          {{- if or .Values.secrets.openai.existingSecret .Values.secrets.openai.value }}
+            - name: openai-secret
+              mountPath: /var/run/secrets/openai
+              readOnly: true
+          {{- end }}
+          {{- if or .Values.secrets.mysql.existingSecret .Values.secrets.mysql.value }}
+            - name: mysql-secret
+              mountPath: /var/run/secrets/mysql
+              readOnly: true
+          {{- end }}
+            - name: data
+              mountPath: {{ .Values.config.dataDir }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: config-template
+          configMap:
+            name: {{ include "openmcp-chain.fullname" . }}-config
+        - name: config-output
+          emptyDir: {}
+      {{- if or .Values.secrets.openai.existingSecret .Values.secrets.openai.value }}
+        - name: openai-secret
+          secret:
+            secretName: {{ if .Values.secrets.openai.existingSecret }}{{ .Values.secrets.openai.existingSecret }}{{ else }}{{ include "openmcp-chain.fullname" . }}-openai{{ end }}
+            optional: true
+      {{- end }}
+      {{- if or .Values.secrets.mysql.existingSecret .Values.secrets.mysql.value }}
+        - name: mysql-secret
+          secret:
+            secretName: {{ if .Values.secrets.mysql.existingSecret }}{{ .Values.secrets.mysql.existingSecret }}{{ else }}{{ include "openmcp-chain.fullname" . }}-mysql{{ end }}
+            optional: true
+      {{- end }}
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "openmcp-chain.fullname" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,66 @@
+{
+  "server": {
+    "address": ":8080"
+  },
+  "storage": {
+    "task_store": {
+      "driver": "mysql",
+      "dsn": "${MYSQL_USER:-openmcp}:${MYSQL_PASSWORD:-openmcp}@tcp(${MYSQL_HOST:-mysql}:${MYSQL_PORT:-3306})/${MYSQL_DATABASE:-openmcp}?parseTime=true&loc=Local",
+      "max_open_conns": 20,
+      "max_idle_conns": 10
+    }
+  },
+  "llm": {
+    "provider": "openai",
+    "openai": {
+      "enabled": true,
+      "api_key_env": "OPENAI_API_KEY",
+      "base_url": "${OPENAI_BASE_URL:-https://api.openai.com/v1}",
+      "model": "${OPENAI_MODEL:-gpt-4o-mini}",
+      "timeout_seconds": 60
+    },
+    "python_bridge": {
+      "enabled": false,
+      "python_executable": "python3",
+      "script_path": "scripts/llm_bridge.py",
+      "working_dir": ".."
+    }
+  },
+  "agent": {
+    "memory_depth": 5
+  },
+  "knowledge": {
+    "source": "../configs/knowledge/tutorial.json",
+    "max_results": 3
+  },
+  "web3": {
+    "rpc_url": "http://anvil:8545",
+    "chain_config": "../configs/chain.yaml",
+    "default_chain": "local-ethereum"
+  },
+  "runtime": {
+    "data_dir": "${OPENMCP_DATA_DIR:-/var/lib/openmcp}"
+  },
+  "task_queue": {
+    "driver": "memory",
+    "worker": 4
+  },
+  "observability": {
+    "logging": {
+      "level": "${LOG_LEVEL:-info}",
+      "format": "json",
+      "outputs": ["stdout"]
+    },
+    "metrics": {
+      "enabled": true,
+      "address": ""
+    },
+    "audit": {
+      "enabled": true,
+      "file": "${OPENMCP_DATA_DIR:-/var/lib/openmcp}/audit.log",
+      "max_size_mb": 100,
+      "max_backups": 7,
+      "max_age_days": 30
+    }
+  }
+}

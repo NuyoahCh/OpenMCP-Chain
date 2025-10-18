@@ -1,0 +1,26 @@
+{{- if .Values.metrics.serviceMonitor.enabled }}
+{{- $labels := dict "app.kubernetes.io/name" (include "openmcp-chain.name" .) "app.kubernetes.io/instance" .Release.Name "app.kubernetes.io/managed-by" .Release.Service -}}
+{{- if .Values.metrics.serviceMonitor.additionalLabels }}
+{{- $labels = merge $labels .Values.metrics.serviceMonitor.additionalLabels -}}
+{{- end }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "openmcp-chain.fullname" . }}
+  labels:
+{{- range $key, $value := $labels }}
+    {{ $key }}: {{ $value }}
+{{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "openmcp-chain.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  namespaceSelector:
+    matchNames:
+      - {{ default .Release.Namespace .Values.metrics.serviceMonitor.namespace }}
+  endpoints:
+    - port: http
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+      path: /metrics
+{{- end }}

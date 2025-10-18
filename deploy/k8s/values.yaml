@@ -1,0 +1,75 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/openmcp/openmcp-chain
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: openmcp.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources: {}
+
+affinity: {}
+nodeSelector: {}
+tolerations: []
+
+env:
+  logLevel: info
+  additional: []
+
+config:
+  dataDir: /var/lib/openmcp
+  knowledgeSource: ../configs/knowledge/tutorial.json
+  metricsEnabled: true
+  mysql:
+    host: mysql.default.svc.cluster.local
+    port: 3306
+    database: openmcp
+    user: openmcp
+  openai:
+    baseURL: https://api.openai.com/v1
+    model: gpt-4o-mini
+  web3:
+    rpcURL: http://anvil:8545
+
+secrets:
+  openai:
+    existingSecret: ""
+    key: api-key
+    value: ""
+  mysql:
+    existingSecret: ""
+    key: password
+    value: ""
+
+persistence:
+  enabled: true
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+  storageClass: ""
+
+serviceAccount:
+  create: false
+  annotations: {}
+  name: ""
+
+metrics:
+  serviceMonitor:
+    enabled: false
+    namespace: ""
+    interval: 30s
+    additionalLabels: {}
