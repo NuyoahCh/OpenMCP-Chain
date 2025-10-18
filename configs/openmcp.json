@@ -6,6 +6,9 @@
     "task_store": {
       "driver": "memory",
       "retries": 3
+    },
+    "auth_store": {
+      "driver": "memory"
     }
   },
   "llm": {
@@ -60,5 +63,26 @@
       "max_backups": 7,
       "max_age_days": 30
     }
+  },
+  "auth": {
+    "mode": "disabled",
+    "jwt": {
+      "issuer": "openmcpd",
+      "audience": "openmcpd-clients",
+      "access_token_ttl_seconds": 3600,
+      "refresh_token_ttl_seconds": 86400
+    },
+    "oauth": {
+      "timeout_seconds": 15,
+      "username_claim": "preferred_username"
+    },
+    "seeds": [
+      {
+        "username": "admin",
+        "password": "admin123",
+        "roles": ["admin"],
+        "permissions": ["tasks.read", "tasks.write"]
+      }
+    ]
   }
 }

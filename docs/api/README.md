@@ -19,55 +19,63 @@ and protobuf messages for gRPC.
 
 ## Authentication
 
-OpenMCP Chain uses token-based authentication. Clients must exchange their
-workspace credentials for a short-lived bearer token which is then attached to
-subsequent requests.
+OpenMCP Chain offers pluggable authentication strategies. The default
+configuration issues JWT access tokens using the built-in identity store, while
+production deployments can switch to OAuth2/OIDC by changing the server
+configuration (`auth.mode`).
 
-### REST
+Regardless of the mode, API calls must include an `Authorization: Bearer` header
+containing a valid access token. Tokens carry the caller's roles and permissions
+so the gateway can enforce fine-grained authorization.
+
+### REST token exchange
 
 ```http
-POST /v1/auth/token
+POST /api/v1/auth/token
 Content-Type: application/json
 
 {
-  "workspace_id": "ws-1234",
-  "workspace_secret": "<secret>"
+  "grant_type": "password",
+  "username": "operator",
+  "password": "<secret>"
 }
 ```
 
-Successful responses return an access token and its expiration timestamp:
+Response:
 
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "expires_at": "2024-01-01T00:00:00Z"
+  "access_token": "eyJhbGciOiJ...",
+  "expires_in": 3600,
+  "refresh_token": "eyJhbGciOiJ...",
+  "refresh_expires_in": 86400,
+  "token_type": "Bearer"
 }
 ```
 
-Tokens must be supplied in the `Authorization: Bearer <token>` header.
+When `auth.mode` is set to `oauth`, the server proxies the request to the
+external OAuth2 token endpoint using the configured client credentials. The
+structure of the response mirrors the upstream provider.
 
-### gRPC
+### Roles & permissions
 
-The gRPC service exposes an `Authenticate` method on the `AuthService`. Clients
-send an `AuthRequest` containing the workspace credentials and receive an
-`AuthToken` message with the `token` and `expires_at` fields. Tokens are carried
-in the `authorization` metadata key for subsequent gRPC calls.
+- **Users** authenticate with username/password (JWT mode) or external identity
+  (OAuth mode). Account metadata is stored in `auth_users`.
+- **Roles** (`auth_roles`) are collections of permissions. Users gain all
+  permissions attached to their roles via the `auth_user_roles` join table.
+- **Permissions** (`auth_permissions`) describe allowed operations such as
+  `tasks.read` and `tasks.write`. Permissions can be assigned directly to users
+  through `auth_user_permissions` for emergency overrides.
 
-```proto
-service AuthService {
-  rpc Authenticate(AuthRequest) returns (AuthToken);
-}
+The REST API currently uses two permissions:
 
-message AuthRequest {
-  string workspace_id = 1;
-  string workspace_secret = 2;
-}
+| Permission   | Description                           |
+|--------------|---------------------------------------|
+| `tasks.read` | Required for `GET /api/v1/tasks`       |
+| `tasks.write`| Required for `POST /api/v1/tasks`      |
 
-message AuthToken {
-  string token = 1;
-  google.protobuf.Timestamp expires_at = 2;
-}
-```
+Administrators can seed initial accounts via the configuration file or by
+running SQL migrations to insert default users and roles.
 
 ## Task Lifecycle
 
@@ -81,19 +89,14 @@ message AuthToken {
 ### Submit Task
 
 ```http
-POST /v1/tasks
+POST /api/v1/tasks
 Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "workspace_id": "ws-1234",
-  "type": "data_pipeline",
-  "payload": {
-    "input_uri": "s3://bucket/path/input.json"
-  },
-  "metadata": {
-    "priority": "high"
-  }
+  "goal": "Summarise the latest governance proposal",
+  "chain_action": "eth_call",
+  "address": "0x1234..."
 }
 ```
 
@@ -102,15 +105,16 @@ Response:
 ```json
 {
   "task_id": "task-1f7f",
-  "status": "PENDING",
-  "submitted_at": "2024-01-01T00:00:00Z"
+  "status": "pending",
+  "attempts": 0,
+  "max_retries": 3
 }
 ```
 
 ### Get Task
 
 ```http
-GET /v1/tasks/{task_id}
+GET /api/v1/tasks?id={task_id}
 Authorization: Bearer <token>
 ```
 
