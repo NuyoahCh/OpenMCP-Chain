@@ -28,6 +28,7 @@ OpenMCP-Chain 是一个将区块链基础设施与大模型智能体深度融合
 - API 契约说明位于 [`docs/api/`](docs/api/)。
 - 部署建议与演进规划参见 [`docs/deployment.md`](docs/deployment.md) 与 [`docs/roadmap.md`](docs/roadmap.md)。
 - 安全测试与渗透测试流程见 [`docs/security/SECURITY_TESTING.md`](docs/security/SECURITY_TESTING.md)。
+- 数据指标、仓库建模与报表方案见 [`docs/analytics/data_warehouse_and_reporting.md`](docs/analytics/data_warehouse_and_reporting.md)。
 - 文档校对流程请查阅 [`docs/documentation-review.md`](docs/documentation-review.md)。
 
 ## 快速入门
