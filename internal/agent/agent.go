@@ -2,11 +2,12 @@ package agent
 
 import (
 	"context"
-	"errors"
+	stdErrors "errors"
 	"fmt"
 	"strings"
 	"time"
 
+	xerrors "OpenMCP-Chain/internal/errors"
 	"OpenMCP-Chain/internal/knowledge"
 	"OpenMCP-Chain/internal/llm"
 	"OpenMCP-Chain/internal/storage/mysql"
@@ -97,11 +98,11 @@ func New(llmClient llm.Client, web3Client web3.Client, repo mysql.TaskRepository
 // Execute 根据任务目标调用大模型，并尝试从链上获取实时信息。
 func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, error) {
 	if a.llmClient == nil {
-		return nil, errors.New("未配置大模型客户端")
+		return nil, xerrors.New(xerrors.CodeInitializationFailure, "未配置大模型客户端")
 	}
 
 	if req.Goal == "" {
-		return nil, errors.New("任务目标不能为空")
+		return nil, xerrors.New(xerrors.CodeInvalidArgument, "任务目标不能为空")
 	}
 
 	historyEntries, historyObservation := a.loadHistory(ctx)
@@ -122,10 +123,10 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 		Knowledge:   knowledgeEntries,
 	})
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("大模型推理超时: %w", err)
+		if stdErrors.Is(err, context.DeadlineExceeded) {
+			return nil, xerrors.Wrap(xerrors.CodeTimeout, err, "大模型推理超时")
 		}
-		return nil, fmt.Errorf("大模型推理失败: %w", err)
+		return nil, xerrors.Wrap(xerrors.CodeExecutorFailure, err, "大模型推理失败")
 	}
 
 	chainInfo := web3.ChainSnapshot{}
@@ -180,7 +181,7 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 			UpdatedAt:   now,
 		}
 		if err := a.taskStorage.Create(ctx, record); err != nil {
-			return nil, fmt.Errorf("保存任务记录失败: %w", err)
+			return nil, xerrors.Wrap(xerrors.CodeStorageFailure, err, "保存任务记录失败")
 		}
 	}
 
@@ -190,12 +191,12 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 // ListHistory 获取最近的任务执行记录。
 func (a *Agent) ListHistory(ctx context.Context, limit int) ([]TaskResult, error) {
 	if a.taskStorage == nil {
-		return nil, errors.New("未配置任务仓库")
+		return nil, xerrors.New(xerrors.CodeInitializationFailure, "未配置任务仓库")
 	}
 
 	records, err := a.taskStorage.ListLatest(ctx, limit)
 	if err != nil {
-		return nil, fmt.Errorf("查询任务记录失败: %w", err)
+		return nil, xerrors.Wrap(xerrors.CodeStorageFailure, err, "查询任务记录失败")
 	}
 
 	results := make([]TaskResult, 0, len(records))

@@ -1,6 +1,10 @@
 package task
 
-import "context"
+import (
+	"context"
+
+	xerrors "OpenMCP-Chain/internal/errors"
+)
 
 // Store 抽象了任务状态的持久化接口。
 type Store interface {
@@ -8,7 +12,7 @@ type Store interface {
 	Get(ctx context.Context, id string) (*Task, error)
 	Claim(ctx context.Context, id string) (*Task, error)
 	MarkSucceeded(ctx context.Context, id string, result ExecutionResult) error
-	MarkFailed(ctx context.Context, id string, lastError string, terminal bool) error
+	MarkFailed(ctx context.Context, id string, code xerrors.Code, lastError string, terminal bool) error
 	List(ctx context.Context, limit int) ([]*Task, error)
 	Close() error
 }

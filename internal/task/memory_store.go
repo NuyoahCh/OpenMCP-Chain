@@ -2,9 +2,10 @@ package task
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
+
+	xerrors "OpenMCP-Chain/internal/errors"
 )
 
 // MemoryStore 以内存方式保存任务状态，主要用于测试。
@@ -23,10 +24,10 @@ func (m *MemoryStore) Create(_ context.Context, task *Task) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if task == nil {
-		return errors.New("task 不能为空")
+		return xerrors.New(xerrors.CodeInvalidArgument, "task 不能为空")
 	}
 	if task.ID == "" {
-		return errors.New("任务 ID 不能为空")
+		return xerrors.New(xerrors.CodeInvalidArgument, "任务 ID 不能为空")
 	}
 	if _, ok := m.tasks[task.ID]; ok {
 		return ErrTaskConflict
@@ -81,6 +82,7 @@ func (m *MemoryStore) Claim(_ context.Context, id string) (*Task, error) {
 	task.Status = StatusRunning
 	task.Attempts++
 	task.LastError = ""
+	task.ErrorCode = ""
 	task.UpdatedAt = time.Now().Unix()
 	return cloneTask(task), nil
 }
@@ -96,12 +98,13 @@ func (m *MemoryStore) MarkSucceeded(_ context.Context, id string, result Executi
 	task.Status = StatusSucceeded
 	task.Result = &result
 	task.LastError = ""
+	task.ErrorCode = ""
 	task.UpdatedAt = time.Now().Unix()
 	return nil
 }
 
 // MarkFailed 标记任务失败。
-func (m *MemoryStore) MarkFailed(_ context.Context, id string, lastError string, _ bool) error {
+func (m *MemoryStore) MarkFailed(_ context.Context, id string, code xerrors.Code, lastError string, _ bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	task, ok := m.tasks[id]
@@ -110,6 +113,7 @@ func (m *MemoryStore) MarkFailed(_ context.Context, id string, lastError string,
 	}
 	task.Status = StatusFailed
 	task.LastError = lastError
+	task.ErrorCode = string(code)
 	task.UpdatedAt = time.Now().Unix()
 	return nil
 }
@@ -144,3 +148,6 @@ func cloneTask(task *Task) *Task {
 	}
 	return &clone
 }
+
+// ensure interface compliance at compile time
+var _ Store = (*MemoryStore)(nil)
