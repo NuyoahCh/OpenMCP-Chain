@@ -20,6 +20,7 @@ import (
 	"OpenMCP-Chain/internal/llm/openai"
 	"OpenMCP-Chain/internal/llm/pythonbridge"
 	"OpenMCP-Chain/internal/storage/mysql"
+	"OpenMCP-Chain/internal/task"
 	"OpenMCP-Chain/internal/web3/provider"
 )
 
@@ -83,6 +84,64 @@ func run(ctx context.Context) error {
 		defer closer.Close()
 	}
 
+	var taskStore task.Store
+	switch cfg.Storage.TaskStore.Driver {
+	case "memory", "":
+		taskStore = task.NewMemoryStore()
+	case "mysql":
+		store, err := task.NewMySQLStore(cfg.Storage.TaskStore.DSN)
+		if err != nil {
+			return err
+		}
+		taskStore = store
+	default:
+		return mysql.ErrUnsupportedDriver
+	}
+	defer func() {
+		if taskStore != nil {
+			_ = taskStore.Close()
+		}
+	}()
+
+	var taskQueue task.Queue
+	switch cfg.TaskQueue.Driver {
+	case "", "memory":
+		taskQueue = task.NewMemoryQueue(1024)
+	case "redis":
+		queue, err := task.NewRedisQueue(task.RedisQueueConfig{
+			Address:   cfg.TaskQueue.Redis.Address,
+			Password:  cfg.TaskQueue.Redis.Password,
+			DB:        cfg.TaskQueue.Redis.DB,
+			Queue:     cfg.TaskQueue.Redis.Queue,
+			BlockWait: time.Duration(cfg.TaskQueue.Redis.BlockWait) * time.Second,
+		})
+		if err != nil {
+			return err
+		}
+		taskQueue = queue
+	case "rabbitmq":
+		queue, err := task.NewRabbitMQQueue(task.RabbitMQConfig{
+			URL:        cfg.TaskQueue.RabbitMQ.URL,
+			Queue:      cfg.TaskQueue.RabbitMQ.Queue,
+			Prefetch:   cfg.TaskQueue.RabbitMQ.Prefetch,
+			Durable:    cfg.TaskQueue.RabbitMQ.Durable,
+			AutoDelete: cfg.TaskQueue.RabbitMQ.AutoDelete,
+		})
+		if err != nil {
+			return err
+		}
+		taskQueue = queue
+	default:
+		return fmt.Errorf("未知的队列驱动: %s", cfg.TaskQueue.Driver)
+	}
+	defer func() {
+		if taskQueue != nil {
+			if err := taskQueue.Close(); err != nil {
+				log.Printf("关闭任务队列失败: %v", err)
+			}
+		}
+	}()
+
 	chainRegistry, err := provider.NewRegistry(ctx, cfg.Web3)
 	if err != nil {
 		return err
@@ -117,7 +176,23 @@ func run(ctx context.Context) error {
 		taskRepo,
 		opts...,
 	)
-	server := api.NewServer(cfg.Server.Address, ag)
+
+	taskService := task.NewService(taskStore, taskQueue, cfg.Storage.TaskStore.Retries)
+	processor := task.NewProcessor(ag, taskStore, taskQueue, taskQueue,
+		task.WithWorkerCount(cfg.TaskQueue.Worker),
+		task.WithProcessorLogger(log.Default()),
+	)
+
+	processorCtx, processorCancel := context.WithCancel(ctx)
+	defer processorCancel()
+
+	go func() {
+		if err := processor.Start(processorCtx); err != nil && !errors.Is(err, context.Canceled) {
+			log.Printf("任务处理器异常退出: %v", err)
+		}
+	}()
+
+	server := api.NewServer(cfg.Server.Address, taskService)
 
 	if err := server.Start(ctx); err != nil && err != context.Canceled {
 		return err
