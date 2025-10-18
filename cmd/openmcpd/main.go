@@ -2,16 +2,21 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"OpenMCP-Chain/internal/agent"
 	"OpenMCP-Chain/internal/api"
 	"OpenMCP-Chain/internal/config"
 	"OpenMCP-Chain/internal/knowledge"
+	"OpenMCP-Chain/internal/llm"
+	"OpenMCP-Chain/internal/llm/openai"
 	"OpenMCP-Chain/internal/llm/pythonbridge"
 	"OpenMCP-Chain/internal/storage/mysql"
 	"OpenMCP-Chain/internal/web3/ethereum"
@@ -39,8 +44,7 @@ func run(ctx context.Context) error {
 	}
 
 	// 初始化大模型客户端。
-	scriptPath := pythonbridge.ResolveScriptPath(cfg.LLM.Python.WorkingDir, cfg.LLM.Python.ScriptPath)
-	llmClient, err := pythonbridge.NewClient(cfg.LLM.Python.PythonExecutable, scriptPath, cfg.LLM.Python.WorkingDir)
+	llmClient, err := createLLMClient(cfg)
 	if err != nil {
 		return err
 	}
@@ -83,12 +87,19 @@ func run(ctx context.Context) error {
 		knowledgeProvider = provider
 	}
 
+	opts := []agent.Option{
+		agent.WithMemoryDepth(cfg.Agent.MemoryDepth),
+		agent.WithKnowledgeProvider(knowledgeProvider),
+	}
+	if cfg.LLM.Provider == "openai" {
+		opts = append(opts, agent.WithLLMTimeout(cfg.LLM.OpenAI.Timeout()))
+	}
+
 	ag := agent.New(
 		llmClient,
 		web3Client,
 		taskRepo,
-		agent.WithMemoryDepth(cfg.Agent.MemoryDepth),
-		agent.WithKnowledgeProvider(knowledgeProvider),
+		opts...,
 	)
 	server := api.NewServer(cfg.Server.Address, ag)
 
@@ -96,4 +107,28 @@ func run(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+func createLLMClient(cfg *config.Config) (llm.Client, error) {
+	switch cfg.LLM.Provider {
+	case "", "python_bridge":
+		scriptPath := pythonbridge.ResolveScriptPath(cfg.LLM.Python.WorkingDir, cfg.LLM.Python.ScriptPath)
+		return pythonbridge.NewClient(cfg.LLM.Python.PythonExecutable, scriptPath, cfg.LLM.Python.WorkingDir)
+	case "openai":
+		apiKey := strings.TrimSpace(cfg.LLM.OpenAI.APIKey)
+		if apiKey == "" && cfg.LLM.OpenAI.APIKeyEnv != "" {
+			apiKey = strings.TrimSpace(os.Getenv(cfg.LLM.OpenAI.APIKeyEnv))
+		}
+		if apiKey == "" {
+			return nil, errors.New("OpenAI provider 需要配置 api_key 或 api_key_env")
+		}
+		return openai.NewClient(openai.Config{
+			APIKey:  apiKey,
+			BaseURL: cfg.LLM.OpenAI.BaseURL,
+			Model:   cfg.LLM.OpenAI.Model,
+			Timeout: cfg.LLM.OpenAI.Timeout(),
+		})
+	default:
+		return nil, fmt.Errorf("未知的大模型 provider: %s", cfg.LLM.Provider)
+	}
 }

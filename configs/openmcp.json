@@ -8,12 +8,19 @@
     }
   },
   "llm": {
-    "provider": "python_bridge",
+    "provider": "openai",
     "python_bridge": {
-      "enabled": true,
+      "enabled": false,
       "python_executable": "python3",
       "script_path": "scripts/llm_bridge.py",
       "working_dir": ".."
+    },
+    "openai": {
+      "enabled": true,
+      "api_key_env": "OPENAI_API_KEY",
+      "base_url": "https://api.openai.com/v1",
+      "model": "gpt-4o-mini",
+      "timeout_seconds": 60
     }
   },
   "agent": {

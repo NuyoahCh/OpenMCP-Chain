@@ -40,6 +40,7 @@ type Agent struct {
 	taskStorage mysql.TaskRepository
 	memoryDepth int
 	knowledge   knowledge.Provider
+	llmTimeout  time.Duration
 }
 
 // Option 定义可选的 Agent 配置。
@@ -61,6 +62,17 @@ func WithKnowledgeProvider(provider knowledge.Provider) Option {
 	}
 }
 
+// WithLLMTimeout 设置调用大模型的超时时间。
+func WithLLMTimeout(timeout time.Duration) Option {
+	return func(a *Agent) {
+		if timeout <= 0 {
+			a.llmTimeout = 0
+			return
+		}
+		a.llmTimeout = timeout
+	}
+}
+
 // New 创建一个 Agent。
 func New(llmClient llm.Client, web3Client *ethereum.Client, repo mysql.TaskRepository, opts ...Option) *Agent {
 	ag := &Agent{
@@ -68,6 +80,7 @@ func New(llmClient llm.Client, web3Client *ethereum.Client, repo mysql.TaskRepos
 		web3Client:  web3Client,
 		taskStorage: repo,
 		memoryDepth: defaultMemoryDepth,
+		llmTimeout:  0,
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -93,7 +106,14 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 	historyEntries, historyObservation := a.loadHistory(ctx)
 	knowledgeEntries, knowledgeObservation := a.collectKnowledge(req.Goal, req.ChainAction)
 
-	llmOutput, err := a.llmClient.Generate(ctx, llm.Request{
+	llmCtx := ctx
+	if a.llmTimeout > 0 {
+		var cancel context.CancelFunc
+		llmCtx, cancel = context.WithTimeout(ctx, a.llmTimeout)
+		defer cancel()
+	}
+
+	llmOutput, err := a.llmClient.Generate(llmCtx, llm.Request{
 		Goal:        req.Goal,
 		ChainAction: req.ChainAction,
 		Address:     req.Address,
@@ -101,6 +121,9 @@ func (a *Agent) Execute(ctx context.Context, req TaskRequest) (*TaskResult, erro
 		Knowledge:   knowledgeEntries,
 	})
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("大模型推理超时: %w", err)
+		}
 		return nil, fmt.Errorf("大模型推理失败: %w", err)
 	}
 
