@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // Config 描述了 OpenMCP 在启动阶段需要加载的核心配置。
@@ -40,6 +41,7 @@ type TaskStoreConfig struct {
 type LLMConfig struct {
 	Provider string             `json:"provider"`
 	Python   PythonBridgeConfig `json:"python_bridge"`
+	OpenAI   OpenAIConfig       `json:"openai"`
 }
 
 // PythonBridgeConfig 描述通过 Python 脚本完成推理时所需的信息。
@@ -48,6 +50,24 @@ type PythonBridgeConfig struct {
 	PythonExecutable string `json:"python_executable"`
 	ScriptPath       string `json:"script_path"`
 	WorkingDir       string `json:"working_dir"`
+}
+
+// OpenAIConfig 描述访问 OpenAI 兼容 API 所需的配置。
+type OpenAIConfig struct {
+	Enabled        bool   `json:"enabled"`
+	APIKey         string `json:"api_key"`
+	APIKeyEnv      string `json:"api_key_env"`
+	BaseURL        string `json:"base_url"`
+	Model          string `json:"model"`
+	TimeoutSeconds int    `json:"timeout_seconds"`
+}
+
+// Timeout 返回配置的超时时间，默认 60 秒。
+func (c OpenAIConfig) Timeout() time.Duration {
+	if c.TimeoutSeconds <= 0 {
+		return 60 * time.Second
+	}
+	return time.Duration(c.TimeoutSeconds) * time.Second
 }
 
 // Web3Config 包含访问区块链节点所需的 RPC 地址。
@@ -120,6 +140,16 @@ func (c *Config) applyDefaults(baseDir string) {
 		c.LLM.Python.WorkingDir = baseDir
 	} else if !filepath.IsAbs(c.LLM.Python.WorkingDir) {
 		c.LLM.Python.WorkingDir = filepath.Join(baseDir, c.LLM.Python.WorkingDir)
+	}
+
+	if c.LLM.OpenAI.BaseURL == "" {
+		c.LLM.OpenAI.BaseURL = "https://api.openai.com/v1"
+	}
+	if c.LLM.OpenAI.Model == "" {
+		c.LLM.OpenAI.Model = "gpt-4o-mini"
+	}
+	if c.LLM.OpenAI.TimeoutSeconds <= 0 {
+		c.LLM.OpenAI.TimeoutSeconds = 60
 	}
 
 	if c.Runtime.DataDir == "" {
