@@ -26,6 +26,22 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
     ];
     return suggestions[Math.floor(Math.random() * suggestions.length)];
   }, []);
+  const [metadata, setMetadata] = useState(
+    () => JSON.stringify({ project: "demo" }, null, 2)
+  );
+  const [errors, setErrors] = useState<string | null>(null);
+
+  const metadataPreview = useMemo(() => {
+    if (!metadata.trim()) {
+      return "此字段可选，用于写入审计或上下文信息";
+    }
+    try {
+      const parsed = JSON.parse(metadata);
+      return JSON.stringify(parsed, null, 2);
+    } catch (error) {
+      return "⚠️ JSON 格式错误，请检查后再提交";
+    }
+  }, [metadata]);
 
   const submitDisabled = loading || !goal.trim();
 
@@ -40,6 +56,14 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
       chain_action: chainAction || undefined,
       address: address.trim() || undefined
     };
+    if (metadata.trim()) {
+      try {
+        payload.metadata = JSON.parse(metadata);
+      } catch (error) {
+        setErrors("Metadata 需为合法 JSON 格式");
+        return;
+      }
+    }
     setErrors(null);
     await onSubmit(payload);
   };
@@ -60,6 +84,7 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
               setGoal(event.target.value);
               setErrors(null);
             }}
+            onChange={(event) => setGoal(event.target.value)}
             rows={3}
             placeholder="描述你希望 Agent 完成的操作"
             required
@@ -77,6 +102,7 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
               setChainAction(event.target.value);
               setErrors(null);
             }}
+            onChange={(event) => setChainAction(event.target.value)}
           >
             {CHAIN_TEMPLATES.map((option) => (
               <option key={option.value || "none"} value={option.value}>
@@ -95,9 +121,21 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
               setAddress(event.target.value);
               setErrors(null);
             }}
+            onChange={(event) => setAddress(event.target.value)}
             placeholder="0x..."
           />
           <span className="helper-text">某些链上操作需要提供地址或合约。</span>
+        </div>
+        <div className="input-field" style={{ gridColumn: "1 / -1" }}>
+          <label htmlFor="metadata">附加 Metadata（可选，JSON 格式）</label>
+          <textarea
+            id="metadata"
+            value={metadata}
+            onChange={(event) => setMetadata(event.target.value)}
+            rows={4}
+            placeholder='{"project": "demo", "owner": "alice"}'
+          />
+          <span className="helper-text">{metadataPreview}</span>
         </div>
       </div>
       {errors ? (

@@ -27,6 +27,7 @@ export interface CreateTaskRequest {
   goal: string;
   chain_action?: string;
   address?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CreateTaskResponse {

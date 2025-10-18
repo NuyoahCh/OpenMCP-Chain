@@ -147,6 +147,7 @@ export default function App() {
 
       <TaskList
         tasks={sortedTasks}
+        tasks={tasks}
         activeTaskId={selectedTask?.id}
         onSelect={(task) => {
           setActiveTask(task);
@@ -157,6 +158,9 @@ export default function App() {
       {selectedTask ? (
         <div className="card" style={{ marginTop: "2rem" }}>
           <h2 className="section-title">任务详情</h2>
+      {selectedTask && selectedTask.result ? (
+        <div className="card" style={{ marginTop: "2rem" }}>
+          <h2 className="section-title">最新结果</h2>
           <div className="meta-row" style={{ marginBottom: "1rem" }}>
             <span>
               <strong>ID:</strong> {selectedTask.id}
@@ -212,6 +216,17 @@ export default function App() {
               错误代码：{selectedTask.error_code}
             </p>
           ) : null}
+              <strong>更新时间:</strong> {new Date(selectedTask.updated_at * 1000).toLocaleString()}
+            </span>
+          </div>
+          <div className="result-panel">
+            <h3 style={{ marginTop: 0 }}>思考过程</h3>
+            <pre>{selectedTask.result.thought}</pre>
+            <h3>模型回复</h3>
+            <pre>{selectedTask.result.reply}</pre>
+            <h3>链上观察</h3>
+            <pre>{selectedTask.result.observations}</pre>
+          </div>
         </div>
       ) : null}
 

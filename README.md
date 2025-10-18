@@ -89,6 +89,7 @@ python examples/task_quickstart.py history --limit 5
 项目提供一个基于 React + Vite 的轻量级前端，帮助快速连调 `/api/v1/tasks` 接口。源码位于 [`web/`](web/README.md)，支持：
 
 - 图形化填写任务目标、链上操作与链上地址；
+- 图形化填写任务目标、链上操作与 Metadata；
 - 实时轮询任务状态，并展示模型思考、回复与链上观测结果；
 - 可通过 `VITE_API_BASE_URL` 环境变量自定义后端地址。
 
