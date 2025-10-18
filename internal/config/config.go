@@ -63,6 +63,12 @@ type RabbitQueueConfig struct {
 	Prefetch   int    `json:"prefetch"`
 	Durable    bool   `json:"durable"`
 	AutoDelete bool   `json:"auto_delete"`
+	Driver                 string `json:"driver"`
+	DSN                    string `json:"dsn"`
+	MaxOpenConns           int    `json:"max_open_conns"`
+	MaxIdleConns           int    `json:"max_idle_conns"`
+	ConnMaxLifetimeSeconds int    `json:"conn_max_lifetime_seconds"`
+	ConnMaxIdleTimeSeconds int    `json:"conn_max_idle_time_seconds"`
 }
 
 // LLMConfig 用于配置大模型推理的调用方式。
@@ -159,6 +165,17 @@ func (c *Config) applyDefaults(baseDir string) {
 	}
 	if c.Storage.TaskStore.Retries <= 0 {
 		c.Storage.TaskStore.Retries = 3
+	if c.Storage.TaskStore.MaxOpenConns <= 0 {
+		c.Storage.TaskStore.MaxOpenConns = 20
+	}
+	if c.Storage.TaskStore.MaxIdleConns <= 0 {
+		c.Storage.TaskStore.MaxIdleConns = 10
+	}
+	if c.Storage.TaskStore.ConnMaxLifetimeSeconds <= 0 {
+		c.Storage.TaskStore.ConnMaxLifetimeSeconds = 1800
+	}
+	if c.Storage.TaskStore.ConnMaxIdleTimeSeconds < 0 {
+		c.Storage.TaskStore.ConnMaxIdleTimeSeconds = 0
 	}
 
 	if c.LLM.Provider == "" {
