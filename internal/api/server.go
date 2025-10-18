@@ -4,29 +4,52 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
 	"OpenMCP-Chain/internal/agent"
+	"OpenMCP-Chain/internal/observability/metrics"
 	"OpenMCP-Chain/internal/task"
+	"OpenMCP-Chain/pkg/logger"
 )
 
 // Server 负责暴露 REST 接口，供外部驱动智能体执行。
 type Server struct {
-	addr  string
-	tasks *task.Service
+	addr           string
+	tasks          *task.Service
+	metricsEnabled bool
 }
 
 // NewServer 构造 API 服务实例。
-func NewServer(addr string, svc *task.Service) *Server {
-	return &Server{addr: addr, tasks: svc}
+func NewServer(addr string, svc *task.Service, opts ...Option) *Server {
+	server := &Server{addr: addr, tasks: svc}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(server)
+		}
+	}
+	return server
+}
+
+// Option configures optional features on the API server.
+type Option func(*Server)
+
+// WithMetrics 启用 HTTP 请求指标采集。
+func WithMetrics(enabled bool) Option {
+	return func(s *Server) {
+		s.metricsEnabled = enabled
+	}
 }
 
 // Start 启动 HTTP 服务，直到上下文取消或出现错误。
 func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/tasks", s.handleTasks)
+	mux.Handle("/api/v1/tasks", s.instrument("tasks", http.HandlerFunc(s.handleTasks)))
+	if s.metricsEnabled {
+		mux.Handle("/metrics", metrics.Handler())
+	}
 
 	server := &http.Server{
 		Addr:              s.addr,
@@ -64,6 +87,18 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) instrument(name string, handler http.Handler) http.Handler {
+	if !s.metricsEnabled {
+		return handler
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		sw := &statusWriter{ResponseWriter: w}
+		handler.ServeHTTP(sw, r)
+		metrics.ObserveHTTPRequest(name, r.Method, sw.statusCode(), time.Since(start))
+	})
+}
+
 // handleCreateTask 处理创建智能体任务的请求。
 func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -73,6 +108,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 
 	var req agent.TaskRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		logger.L().Warn("任务创建请求解析失败", slog.Any("error", err))
 		http.Error(w, "请求体解析失败", http.StatusBadRequest)
 		return
 	}
@@ -85,6 +121,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	taskItem, err := s.tasks.Submit(ctx, req)
 	if err != nil {
+		logger.L().Error("任务提交失败", slog.Any("error", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -97,6 +134,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		"attempts":    taskItem.Attempts,
 		"max_retries": taskItem.MaxRetries,
 	})
+	logger.L().Info("任务已受理", slog.String("task_id", taskItem.ID))
 }
 
 func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
@@ -113,6 +151,7 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "任务不存在", http.StatusNotFound)
 				return
 			}
+			logger.L().Error("查询任务失败", slog.Any("error", err), slog.String("task_id", id))
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -130,12 +169,30 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 
 	tasks, err := s.tasks.List(ctx, limit)
 	if err != nil {
+		logger.L().Error("列出任务失败", slog.Any("error", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(tasks)
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusWriter) statusCode() int {
+	if w.status == 0 {
+		return http.StatusOK
+	}
+	return w.status
 }
 
 // withContext 确保请求处理能够感知根上下文取消。

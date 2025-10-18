@@ -12,14 +12,15 @@ import (
 
 // Config 描述了 OpenMCP 在启动阶段需要加载的核心配置。
 type Config struct {
-	Server    ServerConfig    `json:"server"`
-	Storage   StorageConfig   `json:"storage"`
-	LLM       LLMConfig       `json:"llm"`
-	Web3      Web3Config      `json:"web3"`
-	Agent     AgentConfig     `json:"agent"`
-	Runtime   RuntimeConfig   `json:"runtime"`
-	Knowledge KnowledgeConfig `json:"knowledge"`
-	TaskQueue TaskQueueConfig `json:"task_queue"`
+	Server        ServerConfig        `json:"server"`
+	Storage       StorageConfig       `json:"storage"`
+	LLM           LLMConfig           `json:"llm"`
+	Web3          Web3Config          `json:"web3"`
+	Agent         AgentConfig         `json:"agent"`
+	Runtime       RuntimeConfig       `json:"runtime"`
+	Knowledge     KnowledgeConfig     `json:"knowledge"`
+	TaskQueue     TaskQueueConfig     `json:"task_queue"`
+	Observability ObservabilityConfig `json:"observability"`
 }
 
 // ServerConfig 控制 API 服务的监听地址等参数。
@@ -34,9 +35,13 @@ type StorageConfig struct {
 
 // TaskStoreConfig 目前提供内存实现，后续可以切换到真正的 MySQL。
 type TaskStoreConfig struct {
-	Driver  string `json:"driver"`
-	DSN     string `json:"dsn"`
-	Retries int    `json:"retries"`
+	Driver                 string `json:"driver"`
+	DSN                    string `json:"dsn"`
+	Retries                int    `json:"retries"`
+	MaxOpenConns           int    `json:"max_open_conns"`
+	MaxIdleConns           int    `json:"max_idle_conns"`
+	ConnMaxLifetimeSeconds int    `json:"conn_max_lifetime_seconds"`
+	ConnMaxIdleTimeSeconds int    `json:"conn_max_idle_time_seconds"`
 }
 
 // TaskQueueConfig 描述异步任务队列。
@@ -63,12 +68,35 @@ type RabbitQueueConfig struct {
 	Prefetch   int    `json:"prefetch"`
 	Durable    bool   `json:"durable"`
 	AutoDelete bool   `json:"auto_delete"`
-	Driver                 string `json:"driver"`
-	DSN                    string `json:"dsn"`
-	MaxOpenConns           int    `json:"max_open_conns"`
-	MaxIdleConns           int    `json:"max_idle_conns"`
-	ConnMaxLifetimeSeconds int    `json:"conn_max_lifetime_seconds"`
-	ConnMaxIdleTimeSeconds int    `json:"conn_max_idle_time_seconds"`
+}
+
+// ObservabilityConfig groups logging, metrics and audit settings.
+type ObservabilityConfig struct {
+	Logging LoggingConfig `json:"logging"`
+	Metrics MetricsConfig `json:"metrics"`
+	Audit   AuditConfig   `json:"audit"`
+}
+
+// LoggingConfig controls structured logging behaviour.
+type LoggingConfig struct {
+	Level   string   `json:"level"`
+	Format  string   `json:"format"`
+	Outputs []string `json:"outputs"`
+}
+
+// MetricsConfig enables Prometheus-compatible metrics export.
+type MetricsConfig struct {
+	Enabled bool   `json:"enabled"`
+	Address string `json:"address"`
+}
+
+// AuditConfig defines audit log rotation settings.
+type AuditConfig struct {
+	Enabled    bool   `json:"enabled"`
+	File       string `json:"file"`
+	MaxSizeMB  int    `json:"max_size_mb"`
+	MaxBackups int    `json:"max_backups"`
+	MaxAgeDays int    `json:"max_age_days"`
 }
 
 // LLMConfig 用于配置大模型推理的调用方式。
@@ -165,6 +193,7 @@ func (c *Config) applyDefaults(baseDir string) {
 	}
 	if c.Storage.TaskStore.Retries <= 0 {
 		c.Storage.TaskStore.Retries = 3
+	}
 	if c.Storage.TaskStore.MaxOpenConns <= 0 {
 		c.Storage.TaskStore.MaxOpenConns = 20
 	}
@@ -206,6 +235,38 @@ func (c *Config) applyDefaults(baseDir string) {
 		c.Runtime.DataDir = filepath.Join(baseDir, "data")
 	} else if !filepath.IsAbs(c.Runtime.DataDir) {
 		c.Runtime.DataDir = filepath.Join(baseDir, c.Runtime.DataDir)
+	}
+
+	if len(c.Observability.Logging.Outputs) == 0 {
+		c.Observability.Logging.Outputs = []string{"stdout"}
+	}
+	if c.Observability.Logging.Level == "" {
+		c.Observability.Logging.Level = "info"
+	}
+	if c.Observability.Logging.Format == "" {
+		c.Observability.Logging.Format = "json"
+	}
+
+	if !c.Observability.Audit.Enabled {
+		c.Observability.Audit.Enabled = true
+	}
+	if c.Observability.Audit.File == "" {
+		c.Observability.Audit.File = filepath.Join(c.Runtime.DataDir, "audit.log")
+	} else if !filepath.IsAbs(c.Observability.Audit.File) {
+		c.Observability.Audit.File = filepath.Join(baseDir, c.Observability.Audit.File)
+	}
+	if c.Observability.Audit.MaxSizeMB <= 0 {
+		c.Observability.Audit.MaxSizeMB = 100
+	}
+	if c.Observability.Audit.MaxBackups <= 0 {
+		c.Observability.Audit.MaxBackups = 7
+	}
+	if c.Observability.Audit.MaxAgeDays <= 0 {
+		c.Observability.Audit.MaxAgeDays = 30
+	}
+
+	if !c.Observability.Metrics.Enabled {
+		c.Observability.Metrics.Enabled = true
 	}
 
 	if c.TaskQueue.Driver == "" {

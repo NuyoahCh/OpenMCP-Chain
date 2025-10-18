@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -19,9 +19,11 @@ import (
 	"OpenMCP-Chain/internal/llm"
 	"OpenMCP-Chain/internal/llm/openai"
 	"OpenMCP-Chain/internal/llm/pythonbridge"
+	"OpenMCP-Chain/internal/observability/metrics"
 	"OpenMCP-Chain/internal/storage/mysql"
 	"OpenMCP-Chain/internal/task"
 	"OpenMCP-Chain/internal/web3/provider"
+	"OpenMCP-Chain/pkg/logger"
 )
 
 // main 是 OpenMCP 守护进程的入口。
@@ -30,7 +32,8 @@ func main() {
 	defer stop()
 
 	if err := run(ctx); err != nil {
-		log.Fatalf("openmcpd 运行失败: %v", err)
+		logger.L().Error("openmcpd 运行失败", slog.Any("error", err))
+		os.Exit(1)
 	}
 }
 
@@ -44,6 +47,25 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	if err := logger.Init(logger.Config{
+		Level:       cfg.Observability.Logging.Level,
+		Format:      cfg.Observability.Logging.Format,
+		OutputPaths: append([]string(nil), cfg.Observability.Logging.Outputs...),
+		Audit: logger.AuditConfig{
+			Enabled:    cfg.Observability.Audit.Enabled,
+			Path:       cfg.Observability.Audit.File,
+			MaxSizeMB:  cfg.Observability.Audit.MaxSizeMB,
+			MaxBackups: cfg.Observability.Audit.MaxBackups,
+			MaxAgeDays: cfg.Observability.Audit.MaxAgeDays,
+		},
+	}); err != nil {
+		return fmt.Errorf("初始化日志失败: %w", err)
+	}
+	defer logger.Sync()
+
+	log := logger.L()
+	log.Info("启动 openmcpd", slog.String("config", configPath))
 
 	// 初始化大模型客户端。
 	llmClient, err := createLLMClient(cfg)
@@ -137,7 +159,7 @@ func run(ctx context.Context) error {
 	defer func() {
 		if taskQueue != nil {
 			if err := taskQueue.Close(); err != nil {
-				log.Printf("关闭任务队列失败: %v", err)
+				log.Warn("关闭任务队列失败", slog.Any("error", err))
 			}
 		}
 	}()
@@ -180,7 +202,7 @@ func run(ctx context.Context) error {
 	taskService := task.NewService(taskStore, taskQueue, cfg.Storage.TaskStore.Retries)
 	processor := task.NewProcessor(ag, taskStore, taskQueue, taskQueue,
 		task.WithWorkerCount(cfg.TaskQueue.Worker),
-		task.WithProcessorLogger(log.Default()),
+		task.WithProcessorLogger(logger.Named("processor")),
 	)
 
 	processorCtx, processorCancel := context.WithCancel(ctx)
@@ -188,11 +210,29 @@ func run(ctx context.Context) error {
 
 	go func() {
 		if err := processor.Start(processorCtx); err != nil && !errors.Is(err, context.Canceled) {
-			log.Printf("任务处理器异常退出: %v", err)
+			log.Error("任务处理器异常退出", slog.Any("error", err))
 		}
 	}()
 
-	server := api.NewServer(cfg.Server.Address, taskService)
+	metricsAddr := strings.TrimSpace(cfg.Observability.Metrics.Address)
+	serveMetricsInAPIServer := cfg.Observability.Metrics.Enabled && metricsAddr == ""
+
+	if cfg.Observability.Metrics.Enabled && metricsAddr != "" {
+		go func() {
+			if err := metrics.StartServer(ctx, metricsAddr); err != nil && !errors.Is(err, context.Canceled) {
+				logger.L().Error("指标服务异常退出", slog.Any("error", err), slog.String("address", metricsAddr))
+			}
+		}()
+		log.Info("已开启独立指标端点", slog.String("address", metricsAddr))
+	}
+
+	server := api.NewServer(cfg.Server.Address, taskService,
+		api.WithMetrics(serveMetricsInAPIServer),
+	)
+
+	if cfg.Observability.Metrics.Enabled && serveMetricsInAPIServer {
+		log.Info("在 API 服务上暴露 /metrics", slog.String("address", cfg.Server.Address))
+	}
 
 	if err := server.Start(ctx); err != nil && err != context.Canceled {
 		return err
