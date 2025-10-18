@@ -44,6 +44,9 @@ export default function TaskList({ tasks, onSelect, activeTaskId }: TaskListProp
                       <strong>链上操作:</strong> {task.chain_action || "-"}
                     </span>
                     <span>
+                      <strong>地址:</strong> {task.address || "-"}
+                    </span>
+                    <span>
                       <strong>更新:</strong> {formatTimestamp(task.updated_at)}
                     </span>
                   </div>
@@ -69,6 +72,11 @@ export default function TaskList({ tasks, onSelect, activeTaskId }: TaskListProp
               {task.status === "failed" && task.last_error ? (
                 <p className="helper-text" style={{ color: "#fca5a5", marginTop: "0.75rem" }}>
                   {task.last_error}
+                </p>
+              ) : null}
+              {task.status === "failed" && task.error_code ? (
+                <p className="helper-text" style={{ color: "#f87171", marginTop: "0.25rem" }}>
+                  错误代码：{task.error_code}
                 </p>
               ) : null}
             </article>

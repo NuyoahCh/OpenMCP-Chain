@@ -106,12 +106,22 @@ export default function App() {
   );
 
   const activeTaskId = activeTask?.id ?? null;
+  const sortedTasks = useMemo(() => {
+    return [...tasks].sort((a, b) => b.updated_at - a.updated_at);
+  }, [tasks]);
+
   const selectedTask = useMemo(() => {
     if (!activeTaskId) {
       return null;
     }
     return tasks.find((task) => task.id === activeTaskId) ?? activeTask;
   }, [activeTask, activeTaskId, tasks]);
+
+  useEffect(() => {
+    if (!activeTask && sortedTasks.length) {
+      setActiveTask(sortedTasks[0]);
+    }
+  }, [activeTask, sortedTasks]);
 
   return (
     <main>
@@ -136,6 +146,7 @@ export default function App() {
       </div>
 
       <TaskList
+        tasks={sortedTasks}
         tasks={tasks}
         activeTaskId={selectedTask?.id}
         onSelect={(task) => {
@@ -144,6 +155,9 @@ export default function App() {
         }}
       />
 
+      {selectedTask ? (
+        <div className="card" style={{ marginTop: "2rem" }}>
+          <h2 className="section-title">任务详情</h2>
       {selectedTask && selectedTask.result ? (
         <div className="card" style={{ marginTop: "2rem" }}>
           <h2 className="section-title">最新结果</h2>
@@ -155,6 +169,53 @@ export default function App() {
               <strong>状态:</strong> {statusLabel(selectedTask.status)}
             </span>
             <span>
+              <strong>链上操作:</strong> {selectedTask.chain_action || "-"}
+            </span>
+            <span>
+              <strong>地址:</strong> {selectedTask.address || "-"}
+            </span>
+            <span>
+              <strong>尝试:</strong> {selectedTask.attempts}/{selectedTask.max_retries}
+            </span>
+            <span>
+              <strong>更新时间:</strong> {new Date(selectedTask.updated_at * 1000).toLocaleString()}
+            </span>
+            <span>
+              <strong>创建时间:</strong> {new Date(selectedTask.created_at * 1000).toLocaleString()}
+            </span>
+          </div>
+          {selectedTask.result ? (
+            <div className="result-panel">
+              <h3 style={{ marginTop: 0 }}>思考过程</h3>
+              <pre>{selectedTask.result.thought || "(无思考记录)"}</pre>
+              <h3>模型回复</h3>
+              <pre>{selectedTask.result.reply || "(暂无回复)"}</pre>
+              <h3>链上观察</h3>
+              <pre>{selectedTask.result.observations || "(暂无链上日志)"}</pre>
+              <div className="meta-row" style={{ marginTop: "0.75rem" }}>
+                <span>
+                  <strong>链 ID:</strong> {selectedTask.result.chain_id || "-"}
+                </span>
+                <span>
+                  <strong>区块:</strong> {selectedTask.result.block_number || "-"}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <p className="helper-text" style={{ margin: 0 }}>
+              该任务尚未产出最终结果，系统会持续轮询状态并在完成后自动更新。
+            </p>
+          )}
+          {selectedTask.status === "failed" && selectedTask.last_error ? (
+            <p className="helper-text" style={{ color: "#fca5a5", marginTop: "1rem" }}>
+              最近错误：{selectedTask.last_error}
+            </p>
+          ) : null}
+          {selectedTask.status === "failed" && selectedTask.error_code ? (
+            <p className="helper-text" style={{ color: "#f87171", marginTop: "0.5rem" }}>
+              错误代码：{selectedTask.error_code}
+            </p>
+          ) : null}
               <strong>更新时间:</strong> {new Date(selectedTask.updated_at * 1000).toLocaleString()}
             </span>
           </div>
