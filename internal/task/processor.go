@@ -222,7 +222,12 @@ func (p *Processor) handleExecutionFailure(ctx context.Context, task *Task, exec
 
 func (p *Processor) logDebug(msg string, attrs ...slog.Attr) {
 	if p.logger != nil {
-		p.logger.Debug(msg, attrs...)
+		// 将slog.Attr转换为[]any
+		args := make([]any, len(attrs))
+		for i, attr := range attrs {
+			args[i] = attr
+		}
+		p.logger.Debug(msg, args...)
 	}
 }
 

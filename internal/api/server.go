@@ -64,7 +64,7 @@ func (s *Server) Start(ctx context.Context) error {
 				http.MethodPost: {"tasks.write"},
 			},
 			AuditEvent: "tasks",
-		})(taskHandler)
+		})(taskHandler).(http.HandlerFunc)
 	}
 	mux.Handle("/api/v1/tasks", s.instrument("tasks", taskHandler))
 	mux.Handle("/api/v1/auth/token", s.instrument("auth_token", http.HandlerFunc(s.handleAuthToken)))

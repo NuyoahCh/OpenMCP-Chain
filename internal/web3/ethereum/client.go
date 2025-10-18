@@ -11,14 +11,13 @@ import (
 
 	"OpenMCP-Chain/internal/web3"
 
+	gethcore "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
 	"github.com/ethereum/go-ethereum/common"
 	coretypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
-	gethcore "github.com/ethereum/go-ethereum/ethereum"
-	gethevent "github.com/ethereum/go-ethereum/event"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -46,7 +45,7 @@ type Client struct {
 
 // logSubscriber mirrors the subset of methods required for log subscriptions.
 type logSubscriber interface {
-	SubscribeFilterLogs(ctx context.Context, q gethcore.FilterQuery, ch chan<- coretypes.Log) (gethevent.Subscription, error)
+	SubscribeFilterLogs(ctx context.Context, q gethcore.FilterQuery, ch chan<- coretypes.Log) (gethcore.Subscription, error)
 }
 
 // NewClient dials the configured RPC endpoints and returns a ready-to-use client.
