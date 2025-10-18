@@ -284,6 +284,7 @@ func (t *memoryTxRepository) Create(_ context.Context, record *TaskRecord) error
 		copy(trimmed, t.records[:512])
 		t.records = trimmed
 	}
+
 	return nil
 }
 
