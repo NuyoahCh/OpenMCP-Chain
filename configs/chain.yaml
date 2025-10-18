@@ -1,0 +1,14 @@
+chains:
+  local-ethereum:
+    type: evm
+    rpc_url: http://localhost:8545
+    ws_url: ws://localhost:8546
+    description: Local development Ethereum node
+  polygon-mainnet:
+    type: evm
+    rpc_url: https://polygon-rpc.com
+    description: Public Polygon RPC endpoint
+  bsc-mainnet:
+    type: evm
+    rpc_url: https://bsc-dataseed.binance.org
+    description: Public BSC RPC endpoint

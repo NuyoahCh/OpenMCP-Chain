@@ -72,7 +72,9 @@ func (c OpenAIConfig) Timeout() time.Duration {
 
 // Web3Config 包含访问区块链节点所需的 RPC 地址。
 type Web3Config struct {
-	RPCURL string `json:"rpc_url"`
+	RPCURL       string `json:"rpc_url"`
+	ChainConfig  string `json:"chain_config"`
+	DefaultChain string `json:"default_chain"`
 }
 
 // RuntimeConfig 用于放置运行时的通用参数。
@@ -167,5 +169,9 @@ func (c *Config) applyDefaults(baseDir string) {
 	}
 	if c.Knowledge.Source != "" && !filepath.IsAbs(c.Knowledge.Source) {
 		c.Knowledge.Source = filepath.Join(baseDir, c.Knowledge.Source)
+	}
+
+	if c.Web3.ChainConfig != "" && !filepath.IsAbs(c.Web3.ChainConfig) {
+		c.Web3.ChainConfig = filepath.Join(baseDir, c.Web3.ChainConfig)
 	}
 }

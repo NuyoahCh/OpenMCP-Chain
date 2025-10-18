@@ -19,7 +19,7 @@ import (
 	"OpenMCP-Chain/internal/llm/openai"
 	"OpenMCP-Chain/internal/llm/pythonbridge"
 	"OpenMCP-Chain/internal/storage/mysql"
-	"OpenMCP-Chain/internal/web3/ethereum"
+	"OpenMCP-Chain/internal/web3/provider"
 )
 
 // main 是 OpenMCP 守护进程的入口。
@@ -76,7 +76,16 @@ func run(ctx context.Context) error {
 		defer closer.Close()
 	}
 
-	web3Client := ethereum.NewClient(cfg.Web3.RPCURL)
+	chainRegistry, err := provider.NewRegistry(ctx, cfg.Web3)
+	if err != nil {
+		return err
+	}
+	defer chainRegistry.Close()
+
+	web3Client, err := chainRegistry.DefaultClient()
+	if err != nil {
+		return err
+	}
 
 	var knowledgeProvider knowledge.Provider
 	if cfg.Knowledge.Source != "" {
