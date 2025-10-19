@@ -5,7 +5,7 @@ import {
   fetchTask,
   listTasks,
   statusLabel,
-  verifyApiConnection
+  verifyApiConnection,
 } from "./api";
 import TaskForm from "./components/TaskForm";
 import TaskList, { type TaskStatusFilter } from "./components/TaskList";
@@ -56,7 +56,9 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [lastSynced, setLastSynced] = useState<number | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<"idle" | "success" | "error">("idle");
+  const [connectionStatus, setConnectionStatus] = useState<
+    "idle" | "success" | "error"
+  >("idle");
   const [testingConnection, setTestingConnection] = useState(false);
   const [requiresAuth, setRequiresAuth] = useState(false);
   const [statusFilter, setStatusFilter] = useState<TaskStatusFilter>("all");
@@ -106,6 +108,17 @@ export default function App() {
       }
 
       try {
+        const query: Parameters<typeof listTasks>[0] = {
+          limit: 50,
+          order: "desc",
+        };
+        if (statusFilter !== "all") {
+          query.status = statusFilter;
+        }
+        const data = await listTasks(query);
+        const normalized = [...data].sort(
+          (a, b) => b.updated_at - a.updated_at,
+        );
         const data = await listTasks(50);
         const normalized = [...data].sort((a, b) => b.updated_at - a.updated_at);
         setTasks(normalized);
@@ -122,6 +135,8 @@ export default function App() {
         });
         return true;
       } catch (error) {
+        let message =
+          error instanceof Error ? error.message : "无法同步任务列表";
         let message = error instanceof Error ? error.message : "无法同步任务列表";
         if (error instanceof UnauthorizedError) {
           message = error.message || "后端要求身份认证，请先登录";
@@ -132,6 +147,7 @@ export default function App() {
         if (!options?.silent) {
           showToast({
             title: error instanceof UnauthorizedError ? "需要登录" : "同步失败",
+            message,
             message
           });
         }
@@ -143,7 +159,7 @@ export default function App() {
         setInitialLoading(false);
       }
     },
-    [isOnline, showToast]
+    [isOnline, showToast, statusFilter],
   );
 
   const startPollingTask = useCallback(
@@ -157,12 +173,17 @@ export default function App() {
           if (latest.status === "succeeded" || latest.status === "failed") {
             showToast({
               title: latest.status === "succeeded" ? "任务完成" : "任务失败",
+              message: `${statusLabel(latest.status)} · ID ${latest.id}`,
               message: `${statusLabel(latest.status)} · ID ${latest.id}`
             });
             return;
           }
           await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
         }
+        showToast({
+          title: "轮询超时",
+          message: "任务仍在执行，可稍后手动刷新",
+        });
         showToast({ title: "轮询超时", message: "任务仍在执行，可稍后手动刷新" });
       } catch (error) {
         const message = error instanceof Error ? error.message : "轮询任务失败";
@@ -175,7 +196,7 @@ export default function App() {
         refreshTasks({ silent: true });
       }
     },
-    [refreshTasks, showToast]
+    [refreshTasks, showToast],
   );
 
   const handleCreateTask = useCallback(
@@ -190,6 +211,7 @@ export default function App() {
         const response = await createTask(payload);
         showToast({
           title: "任务已提交",
+          message: `任务 ID ${response.task_id} 已进入队列`,
           message: `任务 ID ${response.task_id} 已进入队列`
         });
         await startPollingTask(response.task_id);
@@ -204,6 +226,7 @@ export default function App() {
         setSubmitting(false);
       }
     },
+    [isOnline, showToast, startPollingTask],
     [isOnline, showToast, startPollingTask]
   );
 
@@ -216,6 +239,7 @@ export default function App() {
       return;
     }
     const blob = new Blob([JSON.stringify(tasks, null, 2)], {
+      type: "application/json;charset=utf-8",
       type: "application/json;charset=utf-8"
     });
     const url = URL.createObjectURL(blob);
@@ -268,6 +292,7 @@ export default function App() {
     if (!isOnline) {
       showToast({
         title: "离线模式",
+        message: "检测到网络不可用，已暂停自动刷新",
         message: "检测到网络不可用，已暂停自动刷新"
       });
     } else {
@@ -282,6 +307,7 @@ export default function App() {
       setRequiresAuth(false);
       refreshTasks({ silent: true });
     },
+    [login, refreshTasks],
     [login, refreshTasks]
   );
 
@@ -304,12 +330,20 @@ export default function App() {
           {requiresAuth ? (
             <div className="banner">
               <strong>后端要求身份认证。</strong>
+              <span>
+                请使用拥有 tasks.read / tasks.write 权限的账号登录后继续操作。
+              </span>
               <span>请使用拥有 tasks.read / tasks.write 权限的账号登录后继续操作。</span>
             </div>
           ) : null}
           {!isOnline ? (
             <div className="banner banner-offline">
               <strong>当前处于离线模式。</strong>
+              <span>
+                {offlineHint
+                  ? `最后在线时间：${offlineHint}`
+                  : "恢复联网后会自动同步。"}
+              </span>
               <span>{offlineHint ? `最后在线时间：${offlineHint}` : "恢复联网后会自动同步。"}</span>
             </div>
           ) : null}

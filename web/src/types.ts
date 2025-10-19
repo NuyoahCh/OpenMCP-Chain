@@ -36,6 +36,12 @@ export interface CreateTaskResponse {
   status: TaskStatus;
   attempts: number;
   max_retries: number;
+  goal?: string;
+  chain_action?: string | null;
+  address?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at: number;
+  updated_at: number;
 }
 
 export interface AuthTokenResponse {

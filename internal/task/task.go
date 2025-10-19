@@ -145,3 +145,13 @@ func cloneMetadata(metadata map[string]any) map[string]any {
 	}
 	return cloned
 }
+
+// IsValidStatus 检查给定的任务状态是否为支持的枚举值。
+func IsValidStatus(status Status) bool {
+	switch status {
+	case StatusPending, StatusRunning, StatusSucceeded, StatusFailed:
+		return true
+	default:
+		return false
+	}
+}

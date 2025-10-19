@@ -96,12 +96,13 @@ func (s *Service) Get(ctx context.Context, id string) (*Task, error) {
 	return s.store.Get(ctx, id)
 }
 
-// List 返回最近的任务列表。
-func (s *Service) List(ctx context.Context, limit int) ([]*Task, error) {
+// List 返回符合过滤条件的任务列表。
+func (s *Service) List(ctx context.Context, opts ...ListOption) ([]*Task, error) {
 	if s.store == nil {
 		return nil, xerrors.New(xerrors.CodeInitializationFailure, "任务存储未初始化")
 	}
-	return s.store.List(ctx, limit)
+	options := buildListOptions(opts)
+	return s.store.List(ctx, options)
 }
 
 // Close 释放资源。
