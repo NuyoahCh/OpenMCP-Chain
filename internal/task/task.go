@@ -31,6 +31,7 @@ type Task struct {
 	Goal        string           `json:"goal"`
 	ChainAction string           `json:"chain_action"`
 	Address     string           `json:"address"`
+	Metadata    map[string]any   `json:"metadata,omitempty"`
 	Status      Status           `json:"status"`
 	Attempts    int              `json:"attempts"`
 	MaxRetries  int              `json:"max_retries"`
@@ -132,4 +133,15 @@ func IsTaskError(err error, target xerrors.Code) bool {
 		return target == CodeTaskExhausted
 	}
 	return false
+}
+
+func cloneMetadata(metadata map[string]any) map[string]any {
+	if metadata == nil {
+		return nil
+	}
+	cloned := make(map[string]any, len(metadata))
+	for key, value := range metadata {
+		cloned[key] = value
+	}
+	return cloned
 }

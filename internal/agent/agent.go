@@ -16,10 +16,11 @@ import (
 
 // TaskRequest 描述了一个简单的智能体任务。
 type TaskRequest struct {
-	ID          string `json:"id,omitempty"`
-	Goal        string `json:"goal"`
-	ChainAction string `json:"chain_action"`
-	Address     string `json:"address"`
+	ID          string         `json:"id,omitempty"`
+	Goal        string         `json:"goal"`
+	ChainAction string         `json:"chain_action"`
+	Address     string         `json:"address"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
 }
 
 // TaskResult 汇总大模型与链上交互得到的结果。

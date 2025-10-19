@@ -42,6 +42,7 @@ func (m *MemoryStore) Create(_ context.Context, task *Task) error {
 		resultCopy := *task.Result
 		clone.Result = &resultCopy
 	}
+	clone.Metadata = cloneMetadata(task.Metadata)
 	m.tasks[task.ID] = &clone
 	return nil
 }
@@ -59,6 +60,7 @@ func (m *MemoryStore) Get(_ context.Context, id string) (*Task, error) {
 		resultCopy := *task.Result
 		clone.Result = &resultCopy
 	}
+	clone.Metadata = cloneMetadata(task.Metadata)
 	return &clone, nil
 }
 
@@ -146,6 +148,7 @@ func cloneTask(task *Task) *Task {
 		resultCopy := *task.Result
 		clone.Result = &resultCopy
 	}
+	clone.Metadata = cloneMetadata(task.Metadata)
 	return &clone
 }
 
