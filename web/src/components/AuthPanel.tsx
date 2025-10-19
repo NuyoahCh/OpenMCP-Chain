@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AuthState } from "../api";
 import type { AuthCredentials } from "../hooks/useAuth";
 
@@ -9,7 +8,6 @@ interface AuthPanelProps {
   requiresAuth: boolean;
   onLogin: (credentials: AuthCredentials) => Promise<void>;
   onLogout: () => void;
-  onSessionRestored?: () => void;
 }
 
 function formatRemaining(expiresAt?: number): string {
@@ -37,8 +35,7 @@ export default function AuthPanel({
   isExpired,
   requiresAuth,
   onLogin,
-  onLogout,
-  onSessionRestored
+  onLogout
 }: AuthPanelProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -58,7 +55,12 @@ export default function AuthPanel({
     return () => clearInterval(timer);
   }, [auth?.expiresAt]);
 
-  const remaining = useMemo(() => formatRemaining(auth?.expiresAt), [auth?.expiresAt]);
+  const scopeLabel = useMemo(() => {
+    if (!auth?.scope || auth.scope.length === 0) {
+      return null;
+    }
+    return auth.scope.join(", ");
+  }, [auth?.scope]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -73,7 +75,6 @@ export default function AuthPanel({
       await onLogin({ username: username.trim(), password });
       setPassword("");
       setInfo("登录成功，令牌已缓存");
-      onSessionRestored?.();
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : "登录失败");
     } finally {
@@ -81,12 +82,10 @@ export default function AuthPanel({
     }
   };
 
-  const handleLogout = () => {
-    onLogout();
-    setInfo("已退出登录");
-  };
-
-  const canCopy = typeof navigator !== "undefined" && Boolean(navigator.clipboard?.writeText);
+  const canCopy = useMemo(
+    () => typeof navigator !== "undefined" && Boolean(navigator.clipboard?.writeText),
+    []
+  );
 
   const copyToken = async () => {
     if (!auth?.accessToken || !canCopy) {
@@ -95,6 +94,19 @@ export default function AuthPanel({
     try {
       await navigator.clipboard.writeText(auth.accessToken);
       setInfo("访问令牌已复制到剪贴板");
+    } catch (copyError) {
+      setError(copyError instanceof Error ? copyError.message : "复制失败");
+    }
+  };
+
+  const copySession = async () => {
+    if (!auth || !canCopy) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(auth, null, 2));
+      setInfo("认证详情已复制");
+      setError(null);
     } catch (copyError) {
       setError(copyError instanceof Error ? copyError.message : "复制失败");
     }
@@ -121,38 +133,19 @@ export default function AuthPanel({
               <strong>剩余有效期:</strong> {isExpired ? "已过期" : remaining}
             </span>
           </div>
-          {auth.scope ? (
+          {scopeLabel ? (
             <p className="helper-text" style={{ marginBottom: "0.75rem" }}>
-              权限范围: {auth.scope.join(", ")}
+              权限范围: {scopeLabel}
             </p>
           ) : null}
           <div className="actions" style={{ marginTop: "0.5rem", flexWrap: "wrap" }}>
-          <div className="actions" style={{ marginTop: "0.5rem" }}>
-            <button type="button" className="secondary" onClick={handleLogout}>
+            <button type="button" className="secondary" onClick={onLogout}>
               退出登录
             </button>
             <button type="button" className="ghost" onClick={copyToken} disabled={!canCopy}>
               复制访问令牌
             </button>
-            <button
-              type="button"
-              className="ghost"
-              onClick={() => {
-                if (!auth) {
-                  return;
-                }
-                navigator?.clipboard
-                  ?.writeText(JSON.stringify(auth, null, 2))
-                  .then(() => {
-                    setError(null);
-                    setInfo("认证详情已复制");
-                  })
-                  .catch((error) =>
-                    setError(error instanceof Error ? error.message : "复制失败")
-                  );
-              }}
-              disabled={!canCopy}
-            >
+            <button type="button" className="ghost" onClick={copySession} disabled={!canCopy}>
               复制会话详情
             </button>
           </div>

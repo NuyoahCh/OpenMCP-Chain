@@ -6,11 +6,6 @@ export interface ExecutionResult {
   chain_id?: string | null;
   block_number?: string | number | null;
   observations?: string | null;
-  thought: string;
-  reply: string;
-  chain_id: string;
-  block_number: string;
-  observations: string;
 }
 
 export interface TaskItem {
@@ -23,14 +18,8 @@ export interface TaskItem {
   max_retries: number;
   last_error?: string | null;
   error_code?: string | null;
-  chain_action: string;
-  address: string;
-  status: TaskStatus;
-  attempts: number;
-  max_retries: number;
-  last_error?: string;
-  error_code?: string;
   result?: ExecutionResult | null;
+  metadata?: Record<string, unknown> | null;
   created_at: number;
   updated_at: number;
 }

@@ -21,39 +21,17 @@ const QUICK_GOALS = [
   "生成链上地址的近期 Gas 消耗速览"
 ];
 
-export default function TaskForm({ onSubmit, submitting, disabled, disabledReason }: TaskFormProps) {
-export default function TaskForm({ onSubmit, submitting }: TaskFormProps) {
-export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
+export default function TaskForm({
+  onSubmit,
+  submitting,
+  disabled,
+  disabledReason,
+  loading
+}: TaskFormProps) {
   const [goal, setGoal] = useState("查询账户余额");
   const [chainAction, setChainAction] = useState("");
   const [address, setAddress] = useState("0x0000000000000000000000000000000000000000");
-  const [errors, setErrors] = useState<string | null>(null);
-
-  const exampleHint = useMemo(() => {
-    const suggestions = [
-      "同步分析最新区块变化，并总结潜在风险",
-      "根据账户余额生成资产概览报告",
-      "对比两个地址最近 10 笔交易的 Gas 情况"
-    ];
-    return suggestions[Math.floor(Math.random() * suggestions.length)];
-  }, []);
-
-  const submitDisabled = submitting || !goal.trim() || Boolean(disabled);
-  const submitDisabled = submitting || !goal.trim();
-
-  const applyQuickGoal = (text: string) => {
-    setGoal(text);
-    setErrors(null);
-  };
-
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (disabled) {
-      return;
-    }
-  const [metadata, setMetadata] = useState(
-    () => JSON.stringify({ project: "demo" }, null, 2)
-  );
+  const [metadata, setMetadata] = useState(() => JSON.stringify({ project: "demo" }, null, 2));
   const [errors, setErrors] = useState<string | null>(null);
 
   const metadataPreview = useMemo(() => {
@@ -68,10 +46,27 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
     }
   }, [metadata]);
 
-  const submitDisabled = loading || !goal.trim();
+  const exampleHint = useMemo(() => {
+    const suggestions = [
+      "同步分析最新区块变化，并总结潜在风险",
+      "根据账户余额生成资产概览报告",
+      "对比两个地址最近 10 笔交易的 Gas 情况"
+    ];
+    return suggestions[Math.floor(Math.random() * suggestions.length)];
+  }, []);
+
+  const submitDisabled = Boolean(disabled || loading || submitting || !goal.trim());
+
+  const applyQuickGoal = (text: string) => {
+    setGoal(text);
+    setErrors(null);
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (disabled) {
+      return;
+    }
     if (!goal.trim()) {
       setErrors("请填写任务目标");
       return;
@@ -81,16 +76,13 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
       setErrors("请输入合法的以太坊地址");
       return;
     }
+
     const payload: CreateTaskRequest = {
       goal: goal.trim(),
       chain_action: chainAction || undefined,
       address: trimmedAddress || undefined
     };
-    const payload: CreateTaskRequest = {
-      goal: goal.trim(),
-      chain_action: chainAction || undefined,
-      address: address.trim() || undefined
-    };
+
     if (metadata.trim()) {
       try {
         payload.metadata = JSON.parse(metadata);
@@ -99,17 +91,24 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
         return;
       }
     }
+
     setErrors(null);
-    await onSubmit(payload);
+    try {
+      await onSubmit(payload);
+    } catch (error) {
+      setErrors(error instanceof Error ? error.message : "提交任务失败");
+    }
   };
 
   return (
     <form className={`card${disabled ? " card-disabled" : ""}`} onSubmit={handleSubmit}>
-    <form className="card" onSubmit={handleSubmit}>
       <h2 className="section-title">发起一次智能体任务</h2>
       <p className="helper-text" style={{ marginTop: "-0.35rem", marginBottom: "1.35rem" }}>
         描述你的目标，可选择需要的链上操作，提交后系统会自动排队执行。
       </p>
+      {disabled && disabledReason ? (
+        <p className="helper-text" style={{ color: "#fca5a5" }}>{disabledReason}</p>
+      ) : null}
       <div className="quick-goals">
         {QUICK_GOALS.map((item) => (
           <button
@@ -117,7 +116,7 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
             type="button"
             className="chip"
             onClick={() => applyQuickGoal(item)}
-            disabled={disabled}
+            disabled={Boolean(disabled)}
           >
             {item}
           </button>
@@ -137,10 +136,6 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
             placeholder="描述你希望 Agent 完成的操作"
             required
             disabled={disabled}
-            onChange={(event) => setGoal(event.target.value)}
-            rows={3}
-            placeholder="描述你希望 Agent 完成的操作"
-            required
           />
           <span className="helper-text" style={{ display: "block", marginTop: "0.35rem" }}>
             示例：{exampleHint}
@@ -156,7 +151,6 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
               setErrors(null);
             }}
             disabled={disabled}
-            onChange={(event) => setChainAction(event.target.value)}
           >
             {CHAIN_TEMPLATES.map((option) => (
               <option key={option.value || "none"} value={option.value}>
@@ -180,11 +174,6 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
           />
           <span className="helper-text">某些链上操作需要提供地址或合约。</span>
         </div>
-            onChange={(event) => setAddress(event.target.value)}
-            placeholder="0x..."
-          />
-          <span className="helper-text">某些链上操作需要提供地址或合约。</span>
-        </div>
         <div className="input-field" style={{ gridColumn: "1 / -1" }}>
           <label htmlFor="metadata">附加 Metadata（可选，JSON 格式）</label>
           <textarea
@@ -193,27 +182,19 @@ export default function TaskForm({ onSubmit, loading }: TaskFormProps) {
             onChange={(event) => setMetadata(event.target.value)}
             rows={4}
             placeholder='{"project": "demo", "owner": "alice"}'
+            disabled={disabled}
           />
           <span className="helper-text">{metadataPreview}</span>
         </div>
       </div>
       {errors ? (
-        <p className="helper-text" style={{ color: "#fca5a5" }}>
+        <p className="helper-text" style={{ color: "#f87171", marginTop: "1rem" }}>
           {errors}
         </p>
       ) : null}
-      {disabled && disabledReason ? (
-        <p className="helper-text" style={{ color: "#f97316", marginTop: errors ? "0.35rem" : "0" }}>
-          {disabledReason}
-        </p>
-      ) : null}
       <div className="actions" style={{ marginTop: "1.5rem" }}>
         <button type="submit" className="primary" disabled={submitDisabled}>
           {submitting ? "提交中..." : "提交任务"}
-      <div className="actions" style={{ marginTop: "1.5rem" }}>
-        <button type="submit" className="primary" disabled={submitDisabled}>
-          {submitting ? "提交中..." : "提交任务"}
-          {loading ? "提交中..." : "提交任务"}
         </button>
       </div>
     </form>

@@ -56,6 +56,7 @@ func (s *Service) Submit(ctx context.Context, req agent.TaskRequest) (*Task, err
 		Goal:        req.Goal,
 		ChainAction: req.ChainAction,
 		Address:     req.Address,
+		Metadata:    cloneMetadata(req.Metadata),
 		Status:      StatusPending,
 		Attempts:    0,
 		MaxRetries:  s.maxRetries,
