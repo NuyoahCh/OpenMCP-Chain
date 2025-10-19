@@ -4,7 +4,6 @@ import (
 	"strings"
 	"time"
 )
-import "time"
 
 // SortOrder defines how results should be ordered when listing tasks.
 type SortOrder int
@@ -42,10 +41,6 @@ func (opts *ListOptions) applyDefaults() {
 	}
 	if opts.Limit > MaxListLimit {
 		opts.Limit = MaxListLimit
-		opts.Limit = 20
-	}
-	if opts.Limit > 100 {
-		opts.Limit = 100
 	}
 	if opts.Offset < 0 {
 		opts.Offset = 0
@@ -53,7 +48,9 @@ func (opts *ListOptions) applyDefaults() {
 	if opts.Statuses != nil {
 		opts.Statuses = normalizeStatuses(opts.Statuses)
 	}
-	if opts.Order != SortByUpdatedAsc {
+	switch opts.Order {
+	case SortByUpdatedAsc, SortByUpdatedDesc:
+	default:
 		opts.Order = SortByUpdatedDesc
 	}
 	opts.Query = strings.TrimSpace(opts.Query)

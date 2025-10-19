@@ -267,10 +267,6 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 
 	limit := task.DefaultListLimit
-	// 处理任务列表查询，支持 limit 参数。
-	query := r.URL.Query()
-	opts := make([]task.ListOption, 0, 4)
-
 	if raw := query.Get("limit"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
 		if err != nil || parsed <= 0 {
@@ -293,85 +289,6 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	opts = append(opts, filters.options...)
 	opts = append(opts, task.WithOffset(filters.offset))
 	opts = append(opts, task.WithLimit(limit))
-
-	// 列出任务并计算分页信息。
-		opts = append(opts, task.WithLimit(parsed))
-	}
-
-	filterOpts, reqErr := parseFilterOptions(query)
-	if reqErr != nil {
-		writeJSONError(w, reqErr.status, reqErr.code, reqErr.message)
-		return
-		}
-		opts = append(opts, task.WithLimit(parsed))
-	}
-
-	if rawStatuses, ok := query["status"]; ok {
-		statuses, err := parseStatusFilters(rawStatuses)
-		if err != nil {
-			writeJSONError(w, http.StatusBadRequest, "INVALID_STATUS", err.Error())
-			return
-		}
-		if len(statuses) > 0 {
-			opts = append(opts, task.WithStatuses(statuses...))
-		}
-		opts = append(opts, task.WithLimit(parsed))
-	}
-
-	filterOpts, reqErr := parseFilterOptions(query)
-	if reqErr != nil {
-		writeJSONError(w, reqErr.status, reqErr.code, reqErr.message)
-		return
-	}
-	opts = append(opts, filterOpts...)
-
-	if raw := query.Get("since"); raw != "" {
-		ts, err := time.Parse(time.RFC3339, raw)
-		if err != nil {
-			writeJSONError(w, http.StatusBadRequest, "INVALID_SINCE", "since 参数需为 RFC3339 时间格式")
-			return
-		}
-		opts = append(opts, task.WithUpdatedSince(ts))
-	}
-
-	if raw := query.Get("until"); raw != "" {
-		ts, err := time.Parse(time.RFC3339, raw)
-		if err != nil {
-			writeJSONError(w, http.StatusBadRequest, "INVALID_UNTIL", "until 参数需为 RFC3339 时间格式")
-			return
-		}
-		opts = append(opts, task.WithUpdatedUntil(ts))
-	}
-
-	if raw := query.Get("has_result"); raw != "" {
-		parsed, err := strconv.ParseBool(raw)
-		if err != nil {
-			writeJSONError(w, http.StatusBadRequest, "INVALID_HAS_RESULT", "has_result 参数需为布尔值")
-			return
-		}
-		opts = append(opts, task.WithResultPresence(parsed))
-	}
-	opts = append(opts, filterOpts...)
-
-	if raw := strings.ToLower(query.Get("order")); raw != "" {
-		switch raw {
-		case "asc":
-			opts = append(opts, task.WithSortOrder(task.SortByUpdatedAsc))
-		case "desc":
-			opts = append(opts, task.WithSortOrder(task.SortByUpdatedDesc))
-		default:
-			writeJSONError(w, http.StatusBadRequest, "INVALID_ORDER", "order 参数仅支持 asc/desc")
-			return
-		}
-		opts = append(opts, task.WithLimit(parsed))
-	}
-
-	filterOpts, reqErr := parseFilterOptions(query)
-	if reqErr != nil {
-		writeJSONError(w, reqErr.status, reqErr.code, reqErr.message)
-		return
-	}
-	opts = append(opts, filterOpts...)
 
 	// 列出任务。
 	tasks, err := s.tasks.List(ctx, opts...)
@@ -460,38 +377,6 @@ func (s *Server) handleTaskStats(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleTaskStats 处理任务统计查询请求。
-func (s *Server) handleTaskStats(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "仅支持 GET")
-		return
-	}
-	if s.tasks == nil {
-		writeJSONError(w, http.StatusServiceUnavailable, string(xerrors.CodeInitializationFailure), "任务服务未初始化")
-		return
-	}
-
-	filterOpts, reqErr := parseFilterOptions(r.URL.Query())
-	if reqErr != nil {
-		writeJSONError(w, reqErr.status, reqErr.code, reqErr.message)
-		return
-	}
-
-	stats, err := s.tasks.Stats(r.Context(), filterOpts...)
-	if err != nil {
-		logger.L().Error("统计任务失败", slog.Any("error", err))
-		status := statusFromError(err)
-		code := string(xerrors.CodeOf(err))
-		if code == "" {
-			code = "TASK_STATS_FAILED"
-		}
-		writeJSONError(w, status, code, err.Error())
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(stats)
-}
-
 // statusWriter 包装 http.ResponseWriter 以捕获响应状态码。
 type statusWriter struct {
 	http.ResponseWriter
@@ -586,19 +471,15 @@ type filterOptions struct {
 }
 
 func parseFilterOptions(query map[string][]string) (filterOptions, *requestError) {
-	opts := make([]task.ListOption, 0, 4)
-	offset := 0
-func parseFilterOptions(query map[string][]string) ([]task.ListOption, *requestError) {
-	opts := make([]task.ListOption, 0, 4)
+	filters := filterOptions{options: make([]task.ListOption, 0, 4)}
 
 	if rawStatuses, ok := query["status"]; ok {
 		statuses, err := parseStatusFilters(rawStatuses)
 		if err != nil {
 			return filterOptions{}, &requestError{status: http.StatusBadRequest, code: "INVALID_STATUS", message: err.Error()}
-			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_STATUS", message: err.Error()}
 		}
 		if len(statuses) > 0 {
-			opts = append(opts, task.WithStatuses(statuses...))
+			filters.options = append(filters.options, task.WithStatuses(statuses...))
 		}
 	}
 
@@ -606,38 +487,34 @@ func parseFilterOptions(query map[string][]string) ([]task.ListOption, *requestE
 		ts, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
 			return filterOptions{}, &requestError{status: http.StatusBadRequest, code: "INVALID_SINCE", message: "since 参数需为 RFC3339 时间格式"}
-			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_SINCE", message: "since 参数需为 RFC3339 时间格式"}
 		}
-		opts = append(opts, task.WithUpdatedSince(ts))
+		filters.options = append(filters.options, task.WithUpdatedSince(ts))
 	}
 
 	if raw := firstValue(query, "until"); raw != "" {
 		ts, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
 			return filterOptions{}, &requestError{status: http.StatusBadRequest, code: "INVALID_UNTIL", message: "until 参数需为 RFC3339 时间格式"}
-			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_UNTIL", message: "until 参数需为 RFC3339 时间格式"}
 		}
-		opts = append(opts, task.WithUpdatedUntil(ts))
+		filters.options = append(filters.options, task.WithUpdatedUntil(ts))
 	}
 
 	if raw := firstValue(query, "has_result"); raw != "" {
 		parsed, err := strconv.ParseBool(raw)
 		if err != nil {
 			return filterOptions{}, &requestError{status: http.StatusBadRequest, code: "INVALID_HAS_RESULT", message: "has_result 参数需为布尔值"}
-			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_HAS_RESULT", message: "has_result 参数需为布尔值"}
 		}
-		opts = append(opts, task.WithResultPresence(parsed))
+		filters.options = append(filters.options, task.WithResultPresence(parsed))
 	}
 
 	if raw := strings.ToLower(firstValue(query, "order")); raw != "" {
 		switch raw {
 		case "asc":
-			opts = append(opts, task.WithSortOrder(task.SortByUpdatedAsc))
+			filters.options = append(filters.options, task.WithSortOrder(task.SortByUpdatedAsc))
 		case "desc":
-			opts = append(opts, task.WithSortOrder(task.SortByUpdatedDesc))
+			filters.options = append(filters.options, task.WithSortOrder(task.SortByUpdatedDesc))
 		default:
 			return filterOptions{}, &requestError{status: http.StatusBadRequest, code: "INVALID_ORDER", message: "order 参数仅支持 asc/desc"}
-			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_ORDER", message: "order 参数仅支持 asc/desc"}
 		}
 	}
 
@@ -646,18 +523,14 @@ func parseFilterOptions(query map[string][]string) ([]task.ListOption, *requestE
 		if err != nil || parsed < 0 {
 			return filterOptions{}, &requestError{status: http.StatusBadRequest, code: "INVALID_OFFSET", message: "offset 参数必须为非负整数"}
 		}
-		offset = parsed
-			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_OFFSET", message: "offset 参数必须为非负整数"}
-		}
-		opts = append(opts, task.WithOffset(parsed))
+		filters.offset = parsed
 	}
 
 	if raw := strings.TrimSpace(firstValue(query, "q")); raw != "" {
-		opts = append(opts, task.WithQuery(raw))
+		filters.options = append(filters.options, task.WithQuery(raw))
 	}
 
-	return filterOptions{options: opts, offset: offset}, nil
-	return opts, nil
+	return filters, nil
 }
 
 func firstValue(values map[string][]string, key string) string {
