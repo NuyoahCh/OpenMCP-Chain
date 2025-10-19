@@ -1,0 +1,15 @@
+# Dependency directories
+web/node_modules/
+web/.vite/
+web/dist/
+
+# Editor settings
+*.swp
+*.swo
+.DS_Store
+.idea/
+.vscode/
+
+# Build artifacts
+*.log
+coverage/

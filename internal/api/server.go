@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"OpenMCP-Chain/internal/agent"
@@ -70,6 +72,7 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	// 应用请求日志中间件。
 	mux.Handle("/api/v1/tasks", s.instrument("tasks", taskHandler))
+	mux.Handle("/api/v1/tasks/stats", s.instrument("task_stats", http.HandlerFunc(s.handleTaskStats)))
 	mux.Handle("/api/v1/auth/token", s.instrument("auth_token", http.HandlerFunc(s.handleAuthToken)))
 	// 如果启用指标采集，注册指标处理器。
 	if s.metricsEnabled {
@@ -112,7 +115,7 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		s.handleListTasks(w, r)
 	default:
-		http.Error(w, "仅支持 GET/POST", http.StatusMethodNotAllowed)
+		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "仅支持 GET/POST")
 	}
 }
 
@@ -133,7 +136,7 @@ func (s *Server) instrument(name string, handler http.Handler) http.Handler {
 func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	// 仅允许 POST 方法。
 	if r.Method != http.MethodPost {
-		http.Error(w, "仅支持 POST", http.StatusMethodNotAllowed)
+		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "仅支持 POST")
 		return
 	}
 
@@ -141,12 +144,12 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	var req agent.TaskRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		logger.L().Warn("任务创建请求解析失败", slog.Any("error", err))
-		http.Error(w, "请求体解析失败", http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, string(xerrors.CodeInvalidArgument), "请求体解析失败")
 		return
 	}
 
 	if s.tasks == nil {
-		http.Error(w, "任务服务未初始化", http.StatusServiceUnavailable)
+		writeJSONError(w, http.StatusServiceUnavailable, string(xerrors.CodeInitializationFailure), "任务服务未初始化")
 		return
 	}
 
@@ -156,7 +159,11 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.L().Error("任务提交失败", slog.Any("error", err))
 		status := statusFromError(err)
-		http.Error(w, err.Error(), status)
+		code := string(xerrors.CodeOf(err))
+		if code == "" {
+			code = "TASK_SUBMIT_FAILED"
+		}
+		writeJSONError(w, status, code, err.Error())
 		return
 	}
 
@@ -164,10 +171,16 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"task_id":     taskItem.ID,
-		"status":      taskItem.Status,
-		"attempts":    taskItem.Attempts,
-		"max_retries": taskItem.MaxRetries,
+		"task_id":      taskItem.ID,
+		"status":       taskItem.Status,
+		"attempts":     taskItem.Attempts,
+		"max_retries":  taskItem.MaxRetries,
+		"goal":         taskItem.Goal,
+		"chain_action": taskItem.ChainAction,
+		"address":      taskItem.Address,
+		"metadata":     taskItem.Metadata,
+		"created_at":   taskItem.CreatedAt,
+		"updated_at":   taskItem.UpdatedAt,
 	})
 	// 记录任务受理日志。
 	logFields := []any{slog.String("task_id", taskItem.ID)}
@@ -180,33 +193,33 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 // handleAuthToken 处理身份认证令牌请求。
 func (s *Server) handleAuthToken(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "仅支持 POST", http.StatusMethodNotAllowed)
+		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "仅支持 POST")
 		return
 	}
 	if s.auth == nil || s.auth.Mode() == auth.ModeDisabled {
-		http.Error(w, "身份认证未启用", http.StatusServiceUnavailable)
+		writeJSONError(w, http.StatusServiceUnavailable, "AUTH_DISABLED", "身份认证未启用")
 		return
 	}
 	var req auth.TokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		logger.L().Warn("认证请求解析失败", slog.Any("error", err))
-		http.Error(w, "请求体解析失败", http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "INVALID_REQUEST", "请求体解析失败")
 		return
 	}
 	token, err := s.auth.Authenticate(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, auth.ErrInvalidCredentials):
-			http.Error(w, "认证失败", http.StatusUnauthorized)
+			writeJSONError(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "认证失败")
 		case errors.Is(err, auth.ErrUnsupportedGrant):
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeJSONError(w, http.StatusBadRequest, "UNSUPPORTED_GRANT", err.Error())
 		case errors.Is(err, auth.ErrSubjectRevoked):
-			http.Error(w, "账号已禁用", http.StatusForbidden)
+			writeJSONError(w, http.StatusForbidden, "ACCOUNT_DISABLED", "账号已禁用")
 		case errors.Is(err, auth.ErrDisabled):
-			http.Error(w, "身份认证未启用", http.StatusServiceUnavailable)
+			writeJSONError(w, http.StatusServiceUnavailable, "AUTH_DISABLED", "身份认证未启用")
 		default:
 			logger.L().Error("令牌签发失败", slog.Any("error", err))
-			http.Error(w, "服务器内部错误", http.StatusInternalServerError)
+			writeJSONError(w, http.StatusInternalServerError, "TOKEN_ISSUE_FAILED", "服务器内部错误")
 		}
 		return
 	}
@@ -223,7 +236,7 @@ func (s *Server) handleAuthToken(w http.ResponseWriter, r *http.Request) {
 // handleListTasks 处理列出智能体任务的请求。
 func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	if s.tasks == nil {
-		http.Error(w, "任务服务未初始化", http.StatusServiceUnavailable)
+		writeJSONError(w, http.StatusServiceUnavailable, string(xerrors.CodeInitializationFailure), "任务服务未初始化")
 		return
 	}
 
@@ -233,11 +246,16 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 		taskItem, err := s.tasks.Get(ctx, id)
 		if err != nil {
 			if task.IsTaskError(err, task.CodeTaskNotFound) || xerrors.CodeOf(err) == xerrors.CodeNotFound {
-				http.Error(w, "任务不存在", http.StatusNotFound)
+				writeJSONError(w, http.StatusNotFound, string(task.CodeTaskNotFound), "任务不存在")
 				return
 			}
 			logger.L().Error("查询任务失败", slog.Any("error", err), slog.String("task_id", id))
-			http.Error(w, err.Error(), statusFromError(err))
+			status := statusFromError(err)
+			code := string(xerrors.CodeOf(err))
+			if code == "" {
+				code = "TASK_QUERY_FAILED"
+			}
+			writeJSONError(w, status, code, err.Error())
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -246,24 +264,74 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 处理任务列表查询，支持 limit 参数。
-	limit := 20
-	if raw := r.URL.Query().Get("limit"); raw != "" {
-		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
-			limit = parsed
+	query := r.URL.Query()
+	opts := make([]task.ListOption, 0, 4)
+
+	if raw := query.Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			writeJSONError(w, http.StatusBadRequest, "INVALID_LIMIT", "limit 参数必须为正整数")
+			return
 		}
+		opts = append(opts, task.WithLimit(parsed))
 	}
 
+	filterOpts, reqErr := parseFilterOptions(query)
+	if reqErr != nil {
+		writeJSONError(w, reqErr.status, reqErr.code, reqErr.message)
+		return
+	}
+	opts = append(opts, filterOpts...)
+
 	// 列出任务。
-	tasks, err := s.tasks.List(ctx, limit)
+	tasks, err := s.tasks.List(ctx, opts...)
 	if err != nil {
 		logger.L().Error("列出任务失败", slog.Any("error", err))
-		http.Error(w, err.Error(), statusFromError(err))
+		status := statusFromError(err)
+		code := string(xerrors.CodeOf(err))
+		if code == "" {
+			code = "TASK_LIST_FAILED"
+		}
+		writeJSONError(w, status, code, err.Error())
 		return
 	}
 
 	// 返回任务列表响应。
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(tasks)
+}
+
+// handleTaskStats 处理任务统计查询请求。
+func (s *Server) handleTaskStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "仅支持 GET")
+		return
+	}
+	if s.tasks == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, string(xerrors.CodeInitializationFailure), "任务服务未初始化")
+		return
+	}
+
+	filterOpts, reqErr := parseFilterOptions(r.URL.Query())
+	if reqErr != nil {
+		writeJSONError(w, reqErr.status, reqErr.code, reqErr.message)
+		return
+	}
+
+	stats, err := s.tasks.Stats(r.Context(), filterOpts...)
+	if err != nil {
+		logger.L().Error("统计任务失败", slog.Any("error", err))
+		status := statusFromError(err)
+		code := string(xerrors.CodeOf(err))
+		if code == "" {
+			code = "TASK_STATS_FAILED"
+		}
+		writeJSONError(w, status, code, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(stats)
 }
 
 // statusWriter 包装 http.ResponseWriter 以捕获响应状态码。
@@ -320,4 +388,117 @@ func statusFromError(err error) int {
 	default:
 		return http.StatusInternalServerError
 	}
+}
+
+type errorResponse struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+func writeJSONError(w http.ResponseWriter, status int, code, message string) {
+	if code == "" {
+		code = "UNKNOWN_ERROR"
+	}
+	if message == "" {
+		message = http.StatusText(status)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(errorResponse{Code: code, Message: message}); err != nil {
+		logger.L().Error("输出错误响应失败", slog.Any("error", err))
+	}
+}
+
+type requestError struct {
+	status  int
+	code    string
+	message string
+}
+
+func parseFilterOptions(query map[string][]string) ([]task.ListOption, *requestError) {
+	opts := make([]task.ListOption, 0, 4)
+
+	if rawStatuses, ok := query["status"]; ok {
+		statuses, err := parseStatusFilters(rawStatuses)
+		if err != nil {
+			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_STATUS", message: err.Error()}
+		}
+		if len(statuses) > 0 {
+			opts = append(opts, task.WithStatuses(statuses...))
+		}
+	}
+
+	if raw := firstValue(query, "since"); raw != "" {
+		ts, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_SINCE", message: "since 参数需为 RFC3339 时间格式"}
+		}
+		opts = append(opts, task.WithUpdatedSince(ts))
+	}
+
+	if raw := firstValue(query, "until"); raw != "" {
+		ts, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_UNTIL", message: "until 参数需为 RFC3339 时间格式"}
+		}
+		opts = append(opts, task.WithUpdatedUntil(ts))
+	}
+
+	if raw := firstValue(query, "has_result"); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_HAS_RESULT", message: "has_result 参数需为布尔值"}
+		}
+		opts = append(opts, task.WithResultPresence(parsed))
+	}
+
+	if raw := strings.ToLower(firstValue(query, "order")); raw != "" {
+		switch raw {
+		case "asc":
+			opts = append(opts, task.WithSortOrder(task.SortByUpdatedAsc))
+		case "desc":
+			opts = append(opts, task.WithSortOrder(task.SortByUpdatedDesc))
+		default:
+			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_ORDER", message: "order 参数仅支持 asc/desc"}
+		}
+	}
+
+	return opts, nil
+}
+
+func firstValue(values map[string][]string, key string) string {
+	items, ok := values[key]
+	if !ok || len(items) == 0 {
+		return ""
+	}
+	return items[0]
+}
+
+func parseStatusFilters(values []string) ([]task.Status, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	seen := make(map[task.Status]struct{}, len(values))
+	statuses := make([]task.Status, 0, len(values))
+	for _, raw := range values {
+		for _, token := range strings.Split(raw, ",") {
+			trimmed := strings.TrimSpace(token)
+			if trimmed == "" {
+				continue
+			}
+			status := task.Status(trimmed)
+			if !task.IsValidStatus(status) {
+				return nil, fmt.Errorf("status 参数包含未知的任务状态: %s", trimmed)
+			}
+			if _, ok := seen[status]; ok {
+				continue
+			}
+			seen[status] = struct{}{}
+			statuses = append(statuses, status)
+		}
+	}
+	if len(statuses) == 0 {
+		return nil, nil
+	}
+	return statuses, nil
 }

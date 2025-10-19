@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	stdErrors "errors"
 	"fmt"
 	"strings"
@@ -50,6 +51,7 @@ func (s *MySQLStore) initSchema() error {
         goal TEXT NOT NULL,
         chain_action VARCHAR(255) DEFAULT '',
         address VARCHAR(255) DEFAULT '',
+        metadata TEXT,
         status VARCHAR(32) NOT NULL,
         attempts INT NOT NULL DEFAULT 0,
         max_retries INT NOT NULL DEFAULT 3,
@@ -75,6 +77,12 @@ func (s *MySQLStore) initSchema() error {
 			return xerrors.Wrap(xerrors.CodeStorageFailure, err, "扩展 task_states.error_code 失败")
 		}
 	}
+	if _, err := s.db.Exec(`ALTER TABLE task_states ADD COLUMN metadata TEXT AFTER address`); err != nil {
+		var mysqlErr *mysql.MySQLError
+		if !(stdErrors.As(err, &mysqlErr) && mysqlErr.Number == 1060) {
+			return xerrors.Wrap(xerrors.CodeStorageFailure, err, "扩展 task_states.metadata 失败")
+		}
+	}
 	return nil
 }
 
@@ -91,15 +99,21 @@ func (s *MySQLStore) Create(ctx context.Context, task *Task) error {
 	task.CreatedAt = now
 	task.UpdatedAt = now
 
-	const stmt = `INSERT INTO task_states
-        (id, goal, chain_action, address, status, attempts, max_retries, last_error, error_code, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, '', '', ?, ?)`
+	metadataValue, err := marshalMetadata(task.Metadata)
+	if err != nil {
+		return xerrors.Wrap(xerrors.CodeInvalidArgument, err, "编码任务 metadata 失败")
+	}
 
-	_, err := s.db.ExecContext(ctx, stmt,
+	const stmt = `INSERT INTO task_states
+        (id, goal, chain_action, address, metadata, status, attempts, max_retries, last_error, error_code, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', '', ?, ?)`
+
+	_, err = s.db.ExecContext(ctx, stmt,
 		task.ID,
 		task.Goal,
 		task.ChainAction,
 		task.Address,
+		metadataValue,
 		task.Status,
 		task.Attempts,
 		task.MaxRetries,
@@ -118,7 +132,7 @@ func (s *MySQLStore) Create(ctx context.Context, task *Task) error {
 
 // Get 查询指定任务。
 func (s *MySQLStore) Get(ctx context.Context, id string) (*Task, error) {
-	const stmt = `SELECT id, goal, chain_action, address, status, attempts, max_retries, last_error, error_code,
+	const stmt = `SELECT id, goal, chain_action, address, metadata, status, attempts, max_retries, last_error, error_code,
         result_thought, result_reply, result_chain_id, result_block_number, result_observations, created_at, updated_at
         FROM task_states WHERE id = ?`
 
@@ -127,12 +141,14 @@ func (s *MySQLStore) Get(ctx context.Context, id string) (*Task, error) {
 	var task Task
 	var result ExecutionResult
 	var hasResult bool
+	var metadata sql.NullString
 
 	if err := row.Scan(
 		&task.ID,
 		&task.Goal,
 		&task.ChainAction,
 		&task.Address,
+		&metadata,
 		&task.Status,
 		&task.Attempts,
 		&task.MaxRetries,
@@ -151,6 +167,12 @@ func (s *MySQLStore) Get(ctx context.Context, id string) (*Task, error) {
 		}
 		return nil, xerrors.Wrap(xerrors.CodeStorageFailure, err, "查询任务失败")
 	}
+
+	decodedMetadata, err := unmarshalMetadata(metadata)
+	if err != nil {
+		return nil, xerrors.Wrap(xerrors.CodeStorageFailure, err, "解析任务 metadata 失败")
+	}
+	task.Metadata = cloneMetadata(decodedMetadata)
 
 	if result.Thought != "" || result.Reply != "" || result.ChainID != "" || result.BlockNumber != "" || result.Observations != "" {
 		task.Result = &result
@@ -257,15 +279,25 @@ func (s *MySQLStore) MarkFailed(ctx context.Context, id string, code xerrors.Cod
 }
 
 // List 返回最近的任务。
-func (s *MySQLStore) List(ctx context.Context, limit int) ([]*Task, error) {
-	if limit <= 0 {
-		limit = 20
-	}
-	const stmt = `SELECT id, goal, chain_action, address, status, attempts, max_retries, last_error, error_code,
-        result_thought, result_reply, result_chain_id, result_block_number, result_observations, created_at, updated_at
-        FROM task_states ORDER BY created_at DESC LIMIT ?`
+func (s *MySQLStore) List(ctx context.Context, opts ListOptions) ([]*Task, error) {
+	opts.applyDefaults()
 
-	rows, err := s.db.QueryContext(ctx, stmt, limit)
+	query := `SELECT id, goal, chain_action, address, metadata, status, attempts, max_retries, last_error, error_code,
+        result_thought, result_reply, result_chain_id, result_block_number, result_observations, created_at, updated_at FROM task_states`
+
+	clause, filterArgs := buildFilterClause(opts)
+	if clause != "" {
+		query += " WHERE " + clause
+	}
+
+	order := " ORDER BY updated_at DESC"
+	if opts.Order == SortByUpdatedAsc {
+		order = " ORDER BY updated_at ASC"
+	}
+	query += order + " LIMIT ?"
+	args := append(filterArgs, opts.Limit)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("查询任务列表失败: %w", err)
 	}
@@ -275,11 +307,13 @@ func (s *MySQLStore) List(ctx context.Context, limit int) ([]*Task, error) {
 	for rows.Next() {
 		var task Task
 		var result ExecutionResult
+		var metadata sql.NullString
 		if err := rows.Scan(
 			&task.ID,
 			&task.Goal,
 			&task.ChainAction,
 			&task.Address,
+			&metadata,
 			&task.Status,
 			&task.Attempts,
 			&task.MaxRetries,
@@ -295,10 +329,17 @@ func (s *MySQLStore) List(ctx context.Context, limit int) ([]*Task, error) {
 		); err != nil {
 			return nil, xerrors.Wrap(xerrors.CodeStorageFailure, err, "解析任务记录失败")
 		}
+		decodedMetadata, err := unmarshalMetadata(metadata)
+		if err != nil {
+			return nil, xerrors.Wrap(xerrors.CodeStorageFailure, err, "解析任务列表 metadata 失败")
+		}
+		task.Metadata = cloneMetadata(decodedMetadata)
+
 		if result.Thought != "" || result.Reply != "" || result.ChainID != "" || result.BlockNumber != "" || result.Observations != "" {
 			task.Result = &result
 		}
 		taskCopy := task
+		taskCopy.Metadata = cloneMetadata(task.Metadata)
 		tasks = append(tasks, &taskCopy)
 	}
 	if err := rows.Err(); err != nil {
@@ -313,6 +354,107 @@ func (s *MySQLStore) Close() error {
 		return nil
 	}
 	return s.db.Close()
+}
+
+// Stats 返回符合过滤条件的任务聚合信息。
+func (s *MySQLStore) Stats(ctx context.Context, opts ListOptions) (TaskStats, error) {
+	opts.applyDefaults()
+
+	query := `SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS running,
+        SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS succeeded,
+        SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS failed,
+        COALESCE(MIN(updated_at), 0) AS oldest,
+        COALESCE(MAX(updated_at), 0) AS newest
+        FROM task_states`
+
+	clause, filterArgs := buildFilterClause(opts)
+	if clause != "" {
+		query += " WHERE " + clause
+	}
+
+	args := []any{string(StatusPending), string(StatusRunning), string(StatusSucceeded), string(StatusFailed)}
+	args = append(args, filterArgs...)
+
+	row := s.db.QueryRowContext(ctx, query, args...)
+
+	var stats TaskStats
+	if err := row.Scan(
+		&stats.Total,
+		&stats.Pending,
+		&stats.Running,
+		&stats.Succeeded,
+		&stats.Failed,
+		&stats.OldestUpdatedAt,
+		&stats.NewestUpdatedAt,
+	); err != nil {
+		return TaskStats{}, xerrors.Wrap(xerrors.CodeStorageFailure, err, "查询任务统计失败")
+	}
+	if stats.Total == 0 {
+		stats.OldestUpdatedAt = 0
+		stats.NewestUpdatedAt = 0
+	}
+	return stats, nil
+}
+
+func marshalMetadata(metadata map[string]any) (sql.NullString, error) {
+	if metadata == nil || len(metadata) == 0 {
+		return sql.NullString{}, nil
+	}
+	bytes, err := json.Marshal(metadata)
+	if err != nil {
+		return sql.NullString{}, err
+	}
+	return sql.NullString{String: string(bytes), Valid: true}, nil
+}
+
+func unmarshalMetadata(raw sql.NullString) (map[string]any, error) {
+	if !raw.Valid || strings.TrimSpace(raw.String) == "" {
+		return nil, nil
+	}
+	var metadata map[string]any
+	if err := json.Unmarshal([]byte(raw.String), &metadata); err != nil {
+		return nil, err
+	}
+	return metadata, nil
+}
+
+func buildFilterClause(opts ListOptions) (string, []any) {
+	conditions := make([]string, 0, 4)
+	args := make([]any, 0, 6)
+
+	if len(opts.Statuses) > 0 {
+		placeholders := make([]string, 0, len(opts.Statuses))
+		for range opts.Statuses {
+			placeholders = append(placeholders, "?")
+		}
+		conditions = append(conditions, fmt.Sprintf("status IN (%s)", strings.Join(placeholders, ",")))
+		for _, status := range opts.Statuses {
+			args = append(args, status)
+		}
+	}
+	if opts.UpdatedGTE > 0 {
+		conditions = append(conditions, "updated_at >= ?")
+		args = append(args, opts.UpdatedGTE)
+	}
+	if opts.UpdatedLTE > 0 {
+		conditions = append(conditions, "updated_at <= ?")
+		args = append(args, opts.UpdatedLTE)
+	}
+	if opts.HasResult != nil {
+		if *opts.HasResult {
+			conditions = append(conditions, "(result_thought <> '' OR result_reply <> '' OR result_chain_id <> '' OR result_block_number <> '' OR result_observations <> '')")
+		} else {
+			conditions = append(conditions, "(result_thought = '' AND result_reply = '' AND result_chain_id = '' AND result_block_number = '' AND (result_observations IS NULL OR result_observations = ''))")
+		}
+	}
+
+	if len(conditions) == 0 {
+		return "", nil
+	}
+	return strings.Join(conditions, " AND "), args
 }
 
 var _ Store = (*MySQLStore)(nil)

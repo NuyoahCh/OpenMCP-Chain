@@ -539,3 +539,22 @@ button.link:hover {
   font-size: 0.85rem;
   color: rgba(226, 232, 240, 0.72);
 }
+
+.content-grid {
+  display: grid;
+  gap: 1.75rem;
+  margin-top: 2.5rem;
+}
+
+@media (min-width: 1024px) {
+  .content-grid {
+    grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
