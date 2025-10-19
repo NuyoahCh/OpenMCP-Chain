@@ -47,6 +47,7 @@ export default function TaskList({
   canLoadMore,
   loadingMore,
   onLoadMore,
+  onClearSearch
 }: TaskListProps) {
   const renderToolbar = (options?: { disableExport?: boolean }) => {
     const { disableExport = false } = options ?? {};
@@ -140,6 +141,23 @@ export default function TaskList({
         <h2 className="section-title">最新任务</h2>
         <p className="helper-text">{hint}</p>
         {renderToolbar({ disableExport: totalCount === 0 })}
+        <div className="list-toolbar">
+          <label htmlFor="task-status-filter">状态筛选</label>
+          <select
+            id="task-status-filter"
+            value={statusFilter}
+            onChange={(event) => onStatusFilterChange(event.target.value as TaskStatusFilter)}
+          >
+            {STATUS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="ghost" onClick={onExport} disabled={!totalCount}>
+            导出 JSON
+          </button>
+        </div>
       </div>
     );
   }
@@ -158,6 +176,23 @@ export default function TaskList({
         </span>
       </div>
       {renderToolbar()}
+      <div className="list-toolbar">
+        <label htmlFor="task-status-filter">状态筛选</label>
+        <select
+          id="task-status-filter"
+          value={statusFilter}
+          onChange={(event) => onStatusFilterChange(event.target.value as TaskStatusFilter)}
+        >
+          {STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <button type="button" className="ghost" onClick={onExport} disabled={!tasks.length}>
+          导出 JSON
+        </button>
+      </div>
       <div className="task-list">
         {tasks.map((task) => {
           const isActive = activeTaskId === task.id;

@@ -43,6 +43,8 @@ def fetch_history(endpoint: str, limit: int, query: str | None = None, offset: i
     params: Dict[str, Any] = {"limit": limit}
     if offset > 0:
         params["offset"] = offset
+def fetch_history(endpoint: str, limit: int, query: str | None = None) -> None:
+    params: Dict[str, Any] = {"limit": limit}
     if query:
         keyword = query.strip()
         if keyword:
@@ -58,6 +60,7 @@ def fetch_history(endpoint: str, limit: int, query: str | None = None, offset: i
                 f"\n提示：还有更多记录，可继续使用 --offset {next_offset} 翻页。",
                 flush=True,
             )
+    print(json.dumps(response.json(), indent=2, ensure_ascii=False))
 
 
 # 获取任务统计信息。
@@ -80,6 +83,28 @@ def fetch_stats(
         params["has_result"] = has_result
     if query:
         params["q"] = query
+    response = requests.get(f"{endpoint}/stats", params=params, timeout=10)
+    response.raise_for_status()
+    print(json.dumps(response.json(), indent=2, ensure_ascii=False))
+
+
+# 获取任务统计信息。
+def fetch_stats(
+    endpoint: str,
+    statuses: list[str],
+    since: str | None,
+    until: str | None,
+    has_result: str | None,
+) -> None:
+    params: Dict[str, Any] = {}
+    if statuses:
+        params["status"] = ",".join(statuses)
+    if since:
+        params["since"] = since
+    if until:
+        params["until"] = until
+    if has_result is not None:
+        params["has_result"] = has_result
     response = requests.get(f"{endpoint}/stats", params=params, timeout=10)
     response.raise_for_status()
     print(json.dumps(response.json(), indent=2, ensure_ascii=False))
@@ -150,6 +175,8 @@ def main() -> None:
             if args.offset < 0:
                 parser.error("history 模式下 --offset 需为非负整数")
             fetch_history(endpoint, args.limit, args.query, args.offset)
+            fetch_history(endpoint, args.limit, args.query)
+            fetch_history(endpoint, args.limit)
         elif args.action == "stats":
             normalized_statuses: list[str] = []
             for value in args.status:
@@ -160,6 +187,7 @@ def main() -> None:
             has_result = args.has_result
             query = args.query.strip() if args.query else None
             fetch_stats(endpoint, normalized_statuses, args.since, args.until, has_result, query)
+            fetch_stats(endpoint, normalized_statuses, args.since, args.until, has_result)
         else:
             parser.error(f"未知操作: {args.action}")
     except requests.HTTPError as exc:  # pragma: no cover - 示例脚本仅做演示

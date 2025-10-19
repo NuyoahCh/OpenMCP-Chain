@@ -22,6 +22,10 @@ import type { CreateTaskRequest, TaskItem, TaskStats } from "./types";
 const POLL_INTERVAL = 3500;
 const MAX_POLL_ATTEMPTS = 40;
 const DEFAULT_PAGE_SIZE = 50;
+import type { CreateTaskRequest, TaskItem } from "./types";
+
+const POLL_INTERVAL = 3500;
+const MAX_POLL_ATTEMPTS = 40;
 
 interface ToastState {
   title: string;
@@ -183,6 +187,7 @@ export default function App() {
       try {
         const query: Parameters<typeof listTasks>[0] = {
           limit: DEFAULT_PAGE_SIZE,
+          limit: 50,
           order: "desc",
         };
         if (statusFilter !== "all") {
@@ -201,6 +206,9 @@ export default function App() {
         const [listResult, statsResult] = await Promise.allSettled([
           listTasks(query),
           fetchTaskStats(statsQuery),
+        const [listResult, statsResult] = await Promise.allSettled([
+          listTasks(query),
+          fetchTaskStats(),
         ]);
         if (listResult.status === "rejected") {
           throw listResult.reason;
@@ -231,6 +239,9 @@ export default function App() {
             ? normalized.length
             : null;
         setNextOffset(computedNextOffset);
+        const normalized = [...listResult.value].sort(
+          (a, b) => b.updated_at - a.updated_at,
+        );
         let nextTasks: TaskItem[] = normalized;
         setTasks((prev) => {
           if (hasLoadedMore && prev.length > 0) {
@@ -244,6 +255,13 @@ export default function App() {
           nextTasks = normalized;
           return normalized;
         });
+        const data = await listTasks(query);
+        const normalized = [...data].sort(
+          (a, b) => b.updated_at - a.updated_at,
+        );
+        const data = await listTasks(50);
+        const normalized = [...data].sort((a, b) => b.updated_at - a.updated_at);
+        setTasks(normalized);
         setFetchError(null);
         setLastSynced(Date.now());
         setConnectionStatus("success");
@@ -259,6 +277,7 @@ export default function App() {
       } catch (error) {
         let message =
           error instanceof Error ? error.message : "无法同步任务列表";
+        let message = error instanceof Error ? error.message : "无法同步任务列表";
         if (error instanceof UnauthorizedError) {
           message = error.message || "后端要求身份认证，请先登录";
           setRequiresAuth(true);
@@ -269,6 +288,7 @@ export default function App() {
           showToast({
             title: error instanceof UnauthorizedError ? "需要登录" : "同步失败",
             message,
+            message
           });
         }
         return false;
@@ -305,6 +325,8 @@ export default function App() {
         offset: nextOffset,
       };
       const pageLimit = query.limit ?? DEFAULT_PAGE_SIZE;
+        offset: tasks.length,
+      };
       if (statusFilter !== "all") {
         query.status = statusFilter;
       }
@@ -327,12 +349,14 @@ export default function App() {
             ? nextOffset + pageLimit
             : null,
         );
+      if (more.length === 0) {
         showToast({ title: "没有更多", message: "已到达任务列表末尾" });
         return;
       }
       setTasks((prev) => {
         let combined = [...prev];
         for (const item of moreTasks) {
+        for (const item of more) {
           combined = mergeTasks(combined, item);
         }
         return combined;
@@ -369,6 +393,17 @@ export default function App() {
     statusFilter,
   ]);
 
+    isOnline,
+    loadingMore,
+    showToast,
+    statusFilter,
+    tasks.length,
+  ]);
+
+    [appliedSearch, isOnline, showToast, statusFilter],
+    [isOnline, showToast, statusFilter],
+  );
+
   const startPollingTask = useCallback(
     async (taskId: string) => {
       setIsPolling(true);
@@ -381,6 +416,7 @@ export default function App() {
             showToast({
               title: latest.status === "succeeded" ? "任务完成" : "任务失败",
               message: `${statusLabel(latest.status)} · ID ${latest.id}`,
+              message: `${statusLabel(latest.status)} · ID ${latest.id}`
             });
             return;
           }
@@ -390,6 +426,7 @@ export default function App() {
           title: "轮询超时",
           message: "任务仍在执行，可稍后手动刷新",
         });
+        showToast({ title: "轮询超时", message: "任务仍在执行，可稍后手动刷新" });
       } catch (error) {
         const message = error instanceof Error ? error.message : "轮询任务失败";
         showToast({ title: "轮询失败", message });
@@ -417,6 +454,7 @@ export default function App() {
         showToast({
           title: "任务已提交",
           message: `任务 ID ${response.task_id} 已进入队列`,
+          message: `任务 ID ${response.task_id} 已进入队列`
         });
         await startPollingTask(response.task_id);
       } catch (error) {
@@ -431,6 +469,7 @@ export default function App() {
       }
     },
     [isOnline, showToast, startPollingTask],
+    [isOnline, showToast, startPollingTask]
   );
 
   const handleSelectTask = useCallback((task: TaskItem) => {
@@ -443,6 +482,20 @@ export default function App() {
     }
     const blob = new Blob([JSON.stringify(filteredTasks, null, 2)], {
       type: "application/json;charset=utf-8",
+      return;
+    }
+    const blob = new Blob([JSON.stringify(filteredTasks, null, 2)], {
+      type: "application/json;charset=utf-8",
+      return;
+    }
+    const blob = new Blob([JSON.stringify(filteredTasks, null, 2)], {
+      type: "application/json;charset=utf-8",
+    if (!tasks.length) {
+      return;
+    }
+    const blob = new Blob([JSON.stringify(tasks, null, 2)], {
+      type: "application/json;charset=utf-8",
+      type: "application/json;charset=utf-8"
     });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -452,6 +505,7 @@ export default function App() {
     URL.revokeObjectURL(url);
     showToast({ title: "已导出", message: "任务列表 JSON 已下载" });
   }, [filteredTasks, showToast]);
+  }, [tasks, showToast]);
 
   const handleTestConnection = useCallback(async () => {
     setTestingConnection(true);
@@ -495,6 +549,7 @@ export default function App() {
       showToast({
         title: "离线模式",
         message: "检测到网络不可用，已暂停自动刷新",
+        message: "检测到网络不可用，已暂停自动刷新"
       });
     } else {
       showToast({ title: "网络已恢复", message: "正在重新同步任务" });
@@ -509,6 +564,7 @@ export default function App() {
       refreshTasks({ silent: true });
     },
     [login, refreshTasks],
+    [login, refreshTasks]
   );
 
   const offlineHint = useMemo(() => {
@@ -521,6 +577,10 @@ export default function App() {
 
   const totalCount = taskStats?.total ?? listTotal ?? tasks.length;
   const canLoadMore = hasMore;
+  const totalCount = taskStats?.total ?? tasks.length;
+  const canLoadMore = taskStats
+    ? totalCount > tasks.length
+    : tasks.length >= DEFAULT_PAGE_SIZE;
 
   return (
     <main>
@@ -536,6 +596,7 @@ export default function App() {
               <span>
                 请使用拥有 tasks.read / tasks.write 权限的账号登录后继续操作。
               </span>
+              <span>请使用拥有 tasks.read / tasks.write 权限的账号登录后继续操作。</span>
             </div>
           ) : null}
           {!isOnline ? (
@@ -554,6 +615,11 @@ export default function App() {
             loading={initialLoading && !taskStats}
             searchQuery={appliedSearch}
           />
+          />
+              <span>{offlineHint ? `最后在线时间：${offlineHint}` : "恢复联网后会自动同步。"}</span>
+            </div>
+          ) : null}
+          <StatusSummary tasks={tasks} />
         </div>
         <div className="header-widgets">
           <ConnectionSettings
@@ -613,6 +679,9 @@ export default function App() {
         <TaskList
           tasks={filteredTasks}
           totalCount={totalCount}
+          totalCount={taskStats?.total ?? filteredTasks.length}
+          totalCount={taskStats?.total ?? tasks.length}
+          totalCount={tasks.length}
           onSelect={handleSelectTask}
           activeTaskId={activeTask?.id}
           loading={initialLoading && !tasks.length}

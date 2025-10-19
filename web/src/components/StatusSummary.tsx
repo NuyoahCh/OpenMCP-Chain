@@ -21,6 +21,7 @@ export default function StatusSummary({
   loading,
   searchQuery
 }: StatusSummaryProps) {
+export default function StatusSummary({ tasks, stats, loading }: StatusSummaryProps) {
   const summary = stats
     ? {
         total: stats.total,

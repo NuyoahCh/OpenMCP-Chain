@@ -65,6 +65,7 @@ curl -X POST http://127.0.0.1:8080/api/v1/tasks \
 | 查询参数 | 描述 |
 | --- | --- |
 | `limit` | 可选，限制返回条数，范围 1–100，未指定时默认 20。 |
+| `limit` | 可选，限制返回条数，范围 1–100。 |
 | `offset` | 可选，跳过前 N 条匹配记录，可用于翻页加载历史任务。 |
 | `status` | 可选，过滤指定状态，可多次传入或使用逗号分隔，例如 `status=pending,failed`。 |
 | `since` / `until` | 可选，RFC3339 时间戳，过滤在指定时间区间内更新的任务。 |
@@ -120,6 +121,57 @@ curl "http://127.0.0.1:8080/api/v1/tasks?limit=5&status=succeeded&has_result=tru
 ## 任务统计概览 `GET /api/v1/tasks/stats`
 
 返回符合过滤条件的任务数量与状态分布，便于在仪表盘中展示总览信息或构建健康检查。支持的查询参数与 `GET /api/v1/tasks` 相同（除 `limit` 外），包括模糊搜索 `q` 参数，例如：
+
+```bash
+curl "http://127.0.0.1:8080/api/v1/tasks/stats?since=2024-05-01T00:00:00Z&has_result=true"
+> 结合 `offset` 可以实现滚动翻页，例如 `?limit=20&offset=20` 将返回第二页任务列表。
+
+```bash
+curl "http://127.0.0.1:8080/api/v1/tasks?limit=5&status=succeeded&has_result=true"
+```
+
+典型响应：
+
+```json
+{
+  "total": 42,
+  "pending": 3,
+  "running": 1,
+  "succeeded": 35,
+  "failed": 3,
+  "oldest_updated_at": 1714561200,
+  "newest_updated_at": 1714564888
+}
+```
+
+[
+  {
+    "id": "20240501-0001",
+    "goal": "查询账户余额",
+    "chain_action": "eth_getBalance",
+    "address": "0x0000000000000000000000000000000000000000",
+    "status": "succeeded",
+    "attempts": 1,
+    "max_retries": 3,
+    "result": {
+      "thought": "当前目标: 查询账户余额",
+      "reply": "该地址余额为 ...",
+      "chain_id": "0x1",
+      "block_number": "0xabcdef",
+      "observations": "eth_getBalance 返回: 0x0234c8a3397aab58"
+    },
+    "created_at": 1714564800,
+    "updated_at": 1714564820
+  }
+]
+```
+
+响应中的字段与任务实体保持一致，便于在调试工具或审计平台中直接复用。若需要查询单条记录，可使用 `GET /api/v1/tasks?id=<task_id>`。
+
+## 任务统计概览 `GET /api/v1/tasks/stats`
+
+返回符合过滤条件的任务数量与状态分布，便于在仪表盘中展示总览信息或构建健康检查。支持的查询参数与 `GET /api/v1/tasks` 相同（除 `limit` 外），包括模糊搜索 `q` 参数，例如：
+返回符合过滤条件的任务数量与状态分布，便于在仪表盘中展示总览信息或构建健康检查。支持的查询参数与 `GET /api/v1/tasks` 相同（除 `limit` 外），例如：
 
 ```bash
 curl "http://127.0.0.1:8080/api/v1/tasks/stats?since=2024-05-01T00:00:00Z&has_result=true"

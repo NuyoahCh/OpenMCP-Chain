@@ -15,6 +15,8 @@ func TestMemoryStoreListWithFilters(t *testing.T) {
 	tasks := []*Task{
 		{ID: "t1", Goal: "g1", Status: StatusPending, MaxRetries: 3, Metadata: map[string]any{"owner": "alice"}},
 		{ID: "t2", Goal: "g2", Status: StatusFailed, MaxRetries: 3, Metadata: map[string]any{"owner": "bob"}},
+		{ID: "t1", Goal: "g1", Status: StatusPending, MaxRetries: 3},
+		{ID: "t2", Goal: "g2", Status: StatusFailed, MaxRetries: 3},
 		{ID: "t3", Goal: "g3", Status: StatusSucceeded, MaxRetries: 3},
 	}
 
@@ -115,6 +117,7 @@ func TestMemoryStoreStats(t *testing.T) {
 	tasks := []*Task{
 		{ID: "a", Goal: "g1", Status: StatusPending, MaxRetries: 3},
 		{ID: "b", Goal: "g2", Status: StatusPending, MaxRetries: 3, Metadata: map[string]any{"team": "infra"}},
+		{ID: "b", Goal: "g2", Status: StatusPending, MaxRetries: 3},
 		{ID: "c", Goal: "g3", Status: StatusPending, MaxRetries: 3},
 	}
 

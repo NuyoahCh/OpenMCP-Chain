@@ -290,12 +290,56 @@ func (s *MySQLStore) List(ctx context.Context, opts ListOptions) ([]*Task, error
 		query += " WHERE " + clause
 	}
 
+	}
+
+	}
+
+
+	conditions := make([]string, 0, 4)
+	args := make([]any, 0, 6)
+
+	if len(opts.Statuses) > 0 {
+		placeholders := make([]string, 0, len(opts.Statuses))
+		for range opts.Statuses {
+			placeholders = append(placeholders, "?")
+		}
+		conditions = append(conditions, fmt.Sprintf("status IN (%s)", strings.Join(placeholders, ",")))
+		for _, status := range opts.Statuses {
+			args = append(args, status)
+		}
+	}
+	if opts.UpdatedGTE > 0 {
+		conditions = append(conditions, "updated_at >= ?")
+		args = append(args, opts.UpdatedGTE)
+	}
+	if opts.UpdatedLTE > 0 {
+		conditions = append(conditions, "updated_at <= ?")
+		args = append(args, opts.UpdatedLTE)
+	}
+	if opts.HasResult != nil {
+		if *opts.HasResult {
+			conditions = append(conditions, "(result_thought <> '' OR result_reply <> '' OR result_chain_id <> '' OR result_block_number <> '' OR result_observations <> '')")
+		} else {
+			conditions = append(conditions, "(result_thought = '' AND result_reply = '' AND result_chain_id = '' AND result_block_number = '' AND (result_observations IS NULL OR result_observations = ''))")
+		}
+	}
+	const stmt = `SELECT id, goal, chain_action, address, metadata, status, attempts, max_retries, last_error, error_code,
+        result_thought, result_reply, result_chain_id, result_block_number, result_observations, created_at, updated_at
+        FROM task_states ORDER BY created_at DESC LIMIT ?`
+
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
 	order := " ORDER BY updated_at DESC"
 	if opts.Order == SortByUpdatedAsc {
 		order = " ORDER BY updated_at ASC"
 	}
 	query += order + " LIMIT ? OFFSET ?"
 	args := append(filterArgs, opts.Limit, opts.Offset)
+	query += order + " LIMIT ?"
+	args := append(filterArgs, opts.Limit)
+	args = append(args, opts.Limit)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
