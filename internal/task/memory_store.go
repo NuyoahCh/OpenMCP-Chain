@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 
@@ -42,6 +43,7 @@ func (m *MemoryStore) Create(_ context.Context, task *Task) error {
 		resultCopy := *task.Result
 		clone.Result = &resultCopy
 	}
+	clone.Metadata = cloneMetadata(task.Metadata)
 	m.tasks[task.ID] = &clone
 	return nil
 }
@@ -59,6 +61,7 @@ func (m *MemoryStore) Get(_ context.Context, id string) (*Task, error) {
 		resultCopy := *task.Result
 		clone.Result = &resultCopy
 	}
+	clone.Metadata = cloneMetadata(task.Metadata)
 	return &clone, nil
 }
 
@@ -119,18 +122,72 @@ func (m *MemoryStore) MarkFailed(_ context.Context, id string, code xerrors.Code
 }
 
 // List 返回最近任务。
-func (m *MemoryStore) List(_ context.Context, limit int) ([]*Task, error) {
+func (m *MemoryStore) List(_ context.Context, opts ListOptions) ([]*Task, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if limit <= 0 {
-		limit = len(m.tasks)
+
+	opts.applyDefaults()
+
+	matchesStatus := func(task *Task) bool {
+		if len(opts.Statuses) == 0 {
+			return true
+		}
+		for _, status := range opts.Statuses {
+			if task.Status == status {
+				return true
+			}
+		}
+		return false
 	}
+
+	hasResult := func(task *Task) bool {
+		if task.Result == nil {
+			return false
+		}
+		if task.Result.Thought != "" || task.Result.Reply != "" || task.Result.ChainID != "" || task.Result.BlockNumber != "" || task.Result.Observations != "" {
+			return true
+		}
+		return false
+	}
+
 	results := make([]*Task, 0, len(m.tasks))
 	for _, task := range m.tasks {
+		if !matchesStatus(task) {
+			continue
+		}
+		if opts.UpdatedGTE > 0 && task.UpdatedAt < opts.UpdatedGTE {
+			continue
+		}
+		if opts.UpdatedLTE > 0 && task.UpdatedAt > opts.UpdatedLTE {
+			continue
+		}
+		if opts.HasResult != nil && hasResult(task) != *opts.HasResult {
+			continue
+		}
 		results = append(results, cloneTask(task))
 	}
-	if len(results) > limit {
-		results = results[:limit]
+
+	sort.Slice(results, func(i, j int) bool {
+		if opts.Order == SortByUpdatedAsc {
+			if results[i].UpdatedAt == results[j].UpdatedAt {
+				if results[i].CreatedAt == results[j].CreatedAt {
+					return results[i].ID < results[j].ID
+				}
+				return results[i].CreatedAt < results[j].CreatedAt
+			}
+			return results[i].UpdatedAt < results[j].UpdatedAt
+		}
+		if results[i].UpdatedAt == results[j].UpdatedAt {
+			if results[i].CreatedAt == results[j].CreatedAt {
+				return results[i].ID < results[j].ID
+			}
+			return results[i].CreatedAt > results[j].CreatedAt
+		}
+		return results[i].UpdatedAt > results[j].UpdatedAt
+	})
+
+	if len(results) > opts.Limit {
+		results = results[:opts.Limit]
 	}
 	return results, nil
 }
@@ -146,6 +203,7 @@ func cloneTask(task *Task) *Task {
 		resultCopy := *task.Result
 		clone.Result = &resultCopy
 	}
+	clone.Metadata = cloneMetadata(task.Metadata)
 	return &clone
 }
 
