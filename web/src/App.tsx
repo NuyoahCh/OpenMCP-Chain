@@ -21,6 +21,10 @@ import type { CreateTaskRequest, TaskItem, TaskStats } from "./types";
 
 const POLL_INTERVAL = 3500;
 const MAX_POLL_ATTEMPTS = 40;
+import type { CreateTaskRequest, TaskItem } from "./types";
+
+const POLL_INTERVAL = 3500;
+const MAX_POLL_ATTEMPTS = 40;
 
 interface ToastState {
   title: string;
@@ -132,6 +136,12 @@ export default function App() {
         const normalized = [...listResult.value].sort(
           (a, b) => b.updated_at - a.updated_at,
         );
+        const data = await listTasks(query);
+        const normalized = [...data].sort(
+          (a, b) => b.updated_at - a.updated_at,
+        );
+        const data = await listTasks(50);
+        const normalized = [...data].sort((a, b) => b.updated_at - a.updated_at);
         setTasks(normalized);
         setFetchError(null);
         setLastSynced(Date.now());
@@ -148,6 +158,7 @@ export default function App() {
       } catch (error) {
         let message =
           error instanceof Error ? error.message : "无法同步任务列表";
+        let message = error instanceof Error ? error.message : "无法同步任务列表";
         if (error instanceof UnauthorizedError) {
           message = error.message || "后端要求身份认证，请先登录";
           setRequiresAuth(true);
@@ -158,6 +169,7 @@ export default function App() {
           showToast({
             title: error instanceof UnauthorizedError ? "需要登录" : "同步失败",
             message,
+            message
           });
         }
         return false;
@@ -183,6 +195,7 @@ export default function App() {
             showToast({
               title: latest.status === "succeeded" ? "任务完成" : "任务失败",
               message: `${statusLabel(latest.status)} · ID ${latest.id}`,
+              message: `${statusLabel(latest.status)} · ID ${latest.id}`
             });
             return;
           }
@@ -192,6 +205,7 @@ export default function App() {
           title: "轮询超时",
           message: "任务仍在执行，可稍后手动刷新",
         });
+        showToast({ title: "轮询超时", message: "任务仍在执行，可稍后手动刷新" });
       } catch (error) {
         const message = error instanceof Error ? error.message : "轮询任务失败";
         showToast({ title: "轮询失败", message });
@@ -219,6 +233,7 @@ export default function App() {
         showToast({
           title: "任务已提交",
           message: `任务 ID ${response.task_id} 已进入队列`,
+          message: `任务 ID ${response.task_id} 已进入队列`
         });
         await startPollingTask(response.task_id);
       } catch (error) {
@@ -233,6 +248,7 @@ export default function App() {
       }
     },
     [isOnline, showToast, startPollingTask],
+    [isOnline, showToast, startPollingTask]
   );
 
   const handleSelectTask = useCallback((task: TaskItem) => {
@@ -245,6 +261,7 @@ export default function App() {
     }
     const blob = new Blob([JSON.stringify(tasks, null, 2)], {
       type: "application/json;charset=utf-8",
+      type: "application/json;charset=utf-8"
     });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -297,6 +314,7 @@ export default function App() {
       showToast({
         title: "离线模式",
         message: "检测到网络不可用，已暂停自动刷新",
+        message: "检测到网络不可用，已暂停自动刷新"
       });
     } else {
       showToast({ title: "网络已恢复", message: "正在重新同步任务" });
@@ -311,6 +329,7 @@ export default function App() {
       refreshTasks({ silent: true });
     },
     [login, refreshTasks],
+    [login, refreshTasks]
   );
 
   const offlineHint = useMemo(() => {
@@ -335,6 +354,7 @@ export default function App() {
               <span>
                 请使用拥有 tasks.read / tasks.write 权限的账号登录后继续操作。
               </span>
+              <span>请使用拥有 tasks.read / tasks.write 权限的账号登录后继续操作。</span>
             </div>
           ) : null}
           {!isOnline ? (
@@ -352,6 +372,10 @@ export default function App() {
             stats={taskStats}
             loading={initialLoading && !taskStats}
           />
+              <span>{offlineHint ? `最后在线时间：${offlineHint}` : "恢复联网后会自动同步。"}</span>
+            </div>
+          ) : null}
+          <StatusSummary tasks={tasks} />
         </div>
         <div className="header-widgets">
           <ConnectionSettings
@@ -411,6 +435,7 @@ export default function App() {
         <TaskList
           tasks={filteredTasks}
           totalCount={taskStats?.total ?? tasks.length}
+          totalCount={tasks.length}
           onSelect={handleSelectTask}
           activeTaskId={activeTask?.id}
           loading={initialLoading && !tasks.length}

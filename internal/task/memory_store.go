@@ -131,6 +131,40 @@ func (m *MemoryStore) List(_ context.Context, opts ListOptions) ([]*Task, error)
 	results := make([]*Task, 0, len(m.tasks))
 	for _, task := range m.tasks {
 		if !matchesListFilters(task, opts) {
+	matchesStatus := func(task *Task) bool {
+		if len(opts.Statuses) == 0 {
+			return true
+		}
+		for _, status := range opts.Statuses {
+			if task.Status == status {
+				return true
+			}
+		}
+		return false
+	}
+
+	hasResult := func(task *Task) bool {
+		if task.Result == nil {
+			return false
+		}
+		if task.Result.Thought != "" || task.Result.Reply != "" || task.Result.ChainID != "" || task.Result.BlockNumber != "" || task.Result.Observations != "" {
+			return true
+		}
+		return false
+	}
+
+	results := make([]*Task, 0, len(m.tasks))
+	for _, task := range m.tasks {
+		if !matchesStatus(task) {
+			continue
+		}
+		if opts.UpdatedGTE > 0 && task.UpdatedAt < opts.UpdatedGTE {
+			continue
+		}
+		if opts.UpdatedLTE > 0 && task.UpdatedAt > opts.UpdatedLTE {
+			continue
+		}
+		if opts.HasResult != nil && hasResult(task) != *opts.HasResult {
 			continue
 		}
 		results = append(results, cloneTask(task))
