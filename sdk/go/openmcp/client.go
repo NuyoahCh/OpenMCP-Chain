@@ -103,7 +103,7 @@ func NewClient(rawURL string, httpClient *http.Client) *Client {
 // for subsequent calls.
 func (c *Client) Authenticate(ctx context.Context, creds Credentials) (Token, error) {
 	var token Token
-	if err := c.post(ctx, "/v1/auth/token", creds, &token, false); err != nil {
+	if err := c.post(ctx, "/api/v1/auth/token", creds, &token, false); err != nil {
 		return Token{}, err
 	}
 	c.mu.Lock()
@@ -115,7 +115,7 @@ func (c *Client) Authenticate(ctx context.Context, creds Credentials) (Token, er
 // SubmitTask creates a new task using the stored access token.
 func (c *Client) SubmitTask(ctx context.Context, submission TaskSubmission) (TaskSummary, error) {
 	var summary TaskSummary
-	if err := c.post(ctx, "/v1/tasks", submission, &summary, true); err != nil {
+	if err := c.post(ctx, "/api/v1/tasks", submission, &summary, true); err != nil {
 		return TaskSummary{}, err
 	}
 	return summary, nil
@@ -123,12 +123,13 @@ func (c *Client) SubmitTask(ctx context.Context, submission TaskSubmission) (Tas
 
 // GetTask fetches task details by identifier.
 func (c *Client) GetTask(ctx context.Context, taskID string) (TaskDetail, error) {
-	var detail TaskDetail
-	endpoint := fmt.Sprintf("/v1/tasks/%s", url.PathEscape(taskID))
-	if err := c.get(ctx, endpoint, &detail, true); err != nil {
-		return TaskDetail{}, err
-	}
-	return detail, nil
+    var detail TaskDetail
+    // 后端通过查询参数 id 获取单个任务
+    endpoint := fmt.Sprintf("/api/v1/tasks?id=%s", url.QueryEscape(taskID))
+    if err := c.get(ctx, endpoint, &detail, true); err != nil {
+        return TaskDetail{}, err
+    }
+    return detail, nil
 }
 
 // AccessToken returns the currently stored token string.
