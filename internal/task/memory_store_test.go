@@ -91,6 +91,22 @@ func TestMemoryStoreListWithFilters(t *testing.T) {
 	if len(matchedMetadata) != 1 || matchedMetadata[0].ID != "t1" {
 		t.Fatalf("unexpected metadata query list: %+v", matchedMetadata)
 	}
+
+	paged, err := store.List(ctx, buildListOptions([]ListOption{WithLimit(1), WithOffset(1)}))
+	if err != nil {
+		t.Fatalf("list with offset: %v", err)
+	}
+	if len(paged) != 1 || paged[0].ID != "t2" {
+		t.Fatalf("unexpected offset window: %+v", paged)
+	}
+
+	empty, err := store.List(ctx, buildListOptions([]ListOption{WithOffset(10)}))
+	if err != nil {
+		t.Fatalf("list with large offset: %v", err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("expected empty slice for large offset, got %d", len(empty))
+	}
 }
 
 func TestMemoryStoreStats(t *testing.T) {

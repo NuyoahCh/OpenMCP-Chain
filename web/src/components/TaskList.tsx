@@ -17,6 +17,9 @@ interface TaskListProps {
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
   onClearSearch?: () => void;
+  canLoadMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 const STATUS_OPTIONS: Array<{ value: TaskStatusFilter; label: string }> = [
@@ -40,6 +43,10 @@ export default function TaskList({
   onExport,
   searchQuery,
   onSearchQueryChange,
+  onClearSearch,
+  canLoadMore,
+  loadingMore,
+  onLoadMore,
   onClearSearch
 }: TaskListProps) {
   const renderToolbar = (options?: { disableExport?: boolean }) => {
@@ -246,6 +253,18 @@ export default function TaskList({
           );
         })}
       </div>
+      {canLoadMore ? (
+        <div className="load-more">
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => onLoadMore?.()}
+            disabled={loadingMore || !onLoadMore}
+          >
+            {loadingMore ? "加载中..." : "加载更多"}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

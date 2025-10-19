@@ -21,6 +21,7 @@ import type { CreateTaskRequest, TaskItem, TaskStats } from "./types";
 
 const POLL_INTERVAL = 3500;
 const MAX_POLL_ATTEMPTS = 40;
+const DEFAULT_PAGE_SIZE = 50;
 import type { CreateTaskRequest, TaskItem } from "./types";
 
 const POLL_INTERVAL = 3500;
@@ -59,6 +60,8 @@ export default function App() {
   const [isPolling, setIsPolling] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasLoadedMore, setHasLoadedMore] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [lastSynced, setLastSynced] = useState<number | null>(null);
   const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
@@ -83,6 +86,11 @@ export default function App() {
     }, 360);
     return () => clearTimeout(handler);
   }, [searchInput]);
+
+  useEffect(() => {
+    setHasLoadedMore(false);
+    setLoadingMore(false);
+  }, [appliedSearch, statusFilter]);
 
   const filteredTasks = useMemo(() => {
     const normalizedSearch = appliedSearch.toLowerCase();
@@ -172,6 +180,7 @@ export default function App() {
 
       try {
         const query: Parameters<typeof listTasks>[0] = {
+          limit: DEFAULT_PAGE_SIZE,
           limit: 50,
           order: "desc",
         };
@@ -206,6 +215,19 @@ export default function App() {
         const normalized = [...listResult.value].sort(
           (a, b) => b.updated_at - a.updated_at,
         );
+        let nextTasks: TaskItem[] = normalized;
+        setTasks((prev) => {
+          if (hasLoadedMore && prev.length > 0) {
+            let combined = [...prev];
+            for (const item of normalized) {
+              combined = mergeTasks(combined, item);
+            }
+            nextTasks = combined;
+            return combined;
+          }
+          nextTasks = normalized;
+          return normalized;
+        });
         const data = await listTasks(query);
         const normalized = [...data].sort(
           (a, b) => b.updated_at - a.updated_at,
@@ -219,10 +241,10 @@ export default function App() {
         setRequiresAuth(false);
         setActiveTask((current) => {
           if (!current) {
-            return normalized[0] ?? null;
+            return nextTasks[0] ?? null;
           }
-          const updated = normalized.find((item) => item.id === current.id);
-          return updated ?? normalized[0] ?? current;
+          const updated = nextTasks.find((item) => item.id === current.id);
+          return updated ?? nextTasks[0] ?? current;
         });
         return true;
       } catch (error) {
@@ -250,6 +272,65 @@ export default function App() {
         setInitialLoading(false);
       }
     },
+    [appliedSearch, hasLoadedMore, isOnline, showToast, statusFilter],
+  );
+
+  const handleLoadMore = useCallback(async () => {
+    if (!isOnline) {
+      showToast({
+        title: "网络不可用",
+        message: "当前设备处于离线状态，无法加载更多任务",
+      });
+      return;
+    }
+    if (loadingMore) {
+      return;
+    }
+    setLoadingMore(true);
+    try {
+      const query: Parameters<typeof listTasks>[0] = {
+        limit: DEFAULT_PAGE_SIZE,
+        order: "desc",
+        offset: tasks.length,
+      };
+      if (statusFilter !== "all") {
+        query.status = statusFilter;
+      }
+      if (appliedSearch) {
+        query.search = appliedSearch;
+      }
+      const more = await listTasks(query);
+      if (more.length === 0) {
+        showToast({ title: "没有更多", message: "已到达任务列表末尾" });
+        return;
+      }
+      setTasks((prev) => {
+        let combined = [...prev];
+        for (const item of more) {
+          combined = mergeTasks(combined, item);
+        }
+        return combined;
+      });
+      setHasLoadedMore(true);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "加载更多任务失败";
+      if (error instanceof UnauthorizedError) {
+        setRequiresAuth(true);
+      }
+      showToast({ title: "加载失败", message });
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [
+    appliedSearch,
+    isOnline,
+    loadingMore,
+    showToast,
+    statusFilter,
+    tasks.length,
+  ]);
+
     [appliedSearch, isOnline, showToast, statusFilter],
     [isOnline, showToast, statusFilter],
   );
@@ -328,6 +409,10 @@ export default function App() {
 
   const handleExport = useCallback(() => {
     if (!filteredTasks.length) {
+      return;
+    }
+    const blob = new Blob([JSON.stringify(filteredTasks, null, 2)], {
+      type: "application/json;charset=utf-8",
       return;
     }
     const blob = new Blob([JSON.stringify(filteredTasks, null, 2)], {
@@ -416,6 +501,11 @@ export default function App() {
     const date = new Date(lastChanged);
     return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
   }, [lastChanged]);
+
+  const totalCount = taskStats?.total ?? tasks.length;
+  const canLoadMore = taskStats
+    ? totalCount > tasks.length
+    : tasks.length >= DEFAULT_PAGE_SIZE;
 
   return (
     <main>
@@ -513,6 +603,7 @@ export default function App() {
         </div>
         <TaskList
           tasks={filteredTasks}
+          totalCount={totalCount}
           totalCount={taskStats?.total ?? filteredTasks.length}
           totalCount={taskStats?.total ?? tasks.length}
           totalCount={tasks.length}
@@ -527,6 +618,9 @@ export default function App() {
           searchQuery={searchInput}
           onSearchQueryChange={setSearchInput}
           onClearSearch={() => setSearchInput("")}
+          canLoadMore={canLoadMore}
+          loadingMore={loadingMore}
+          onLoadMore={handleLoadMore}
         />
       </section>
 

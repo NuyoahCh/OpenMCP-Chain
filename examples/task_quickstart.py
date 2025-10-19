@@ -6,6 +6,8 @@
 
     python task_quickstart.py history --limit 5
 
+    python task_quickstart.py history --limit 10 --offset 10
+
 在运行前请确保已启动 openmcpd 守护进程，并根据需要设置 --host 与 --port。
 """
 
@@ -37,6 +39,10 @@ def invoke_task(endpoint: str, goal: str, chain_action: str | None, address: str
     print(json.dumps(response.json(), indent=2, ensure_ascii=False))
 
 # 获取任务历史记录。
+def fetch_history(endpoint: str, limit: int, query: str | None = None, offset: int = 0) -> None:
+    params: Dict[str, Any] = {"limit": limit}
+    if offset > 0:
+        params["offset"] = offset
 def fetch_history(endpoint: str, limit: int, query: str | None = None) -> None:
     params: Dict[str, Any] = {"limit": limit}
     if query:
@@ -117,6 +123,12 @@ def main() -> None:
     parser.add_argument("--metadata", nargs="*", default=[], help="附加元数据，使用 key=value 格式")
     parser.add_argument("--limit", type=int, default=10, help="history 模式下返回的任务数量")
     parser.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        help="history 模式下跳过的记录数量，用于翻页",
+    )
+    parser.add_argument(
         "--query",
         help="在 history/stats 模式下按关键字模糊搜索任务 ID、目标或执行结果",
     )
@@ -151,6 +163,9 @@ def main() -> None:
             metadata = parse_metadata(args.metadata)
             invoke_task(endpoint, args.goal, args.chain_action, args.address, metadata)
         elif args.action == "history":
+            if args.offset < 0:
+                parser.error("history 模式下 --offset 需为非负整数")
+            fetch_history(endpoint, args.limit, args.query, args.offset)
             fetch_history(endpoint, args.limit, args.query)
             fetch_history(endpoint, args.limit)
         elif args.action == "stats":

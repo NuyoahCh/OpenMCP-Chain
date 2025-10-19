@@ -290,6 +290,8 @@ func (s *MySQLStore) List(ctx context.Context, opts ListOptions) ([]*Task, error
 		query += " WHERE " + clause
 	}
 
+	}
+
 
 	conditions := make([]string, 0, 4)
 	args := make([]any, 0, 6)
@@ -331,6 +333,8 @@ func (s *MySQLStore) List(ctx context.Context, opts ListOptions) ([]*Task, error
 	if opts.Order == SortByUpdatedAsc {
 		order = " ORDER BY updated_at ASC"
 	}
+	query += order + " LIMIT ? OFFSET ?"
+	args := append(filterArgs, opts.Limit, opts.Offset)
 	query += order + " LIMIT ?"
 	args := append(filterArgs, opts.Limit)
 	args = append(args, opts.Limit)

@@ -19,6 +19,7 @@ const (
 // ListOptions controls how tasks are selected when querying the store.
 type ListOptions struct {
 	Limit      int
+	Offset     int
 	Statuses   []Status
 	UpdatedGTE int64
 	UpdatedLTE int64
@@ -34,6 +35,9 @@ func (opts *ListOptions) applyDefaults() {
 	}
 	if opts.Limit > 100 {
 		opts.Limit = 100
+	}
+	if opts.Offset < 0 {
+		opts.Offset = 0
 	}
 	if opts.Statuses != nil {
 		opts.Statuses = normalizeStatuses(opts.Statuses)
@@ -51,6 +55,13 @@ type ListOption func(*ListOptions)
 func WithLimit(limit int) ListOption {
 	return func(opts *ListOptions) {
 		opts.Limit = limit
+	}
+}
+
+// WithOffset skips the first n matching tasks before returning results.
+func WithOffset(offset int) ListOption {
+	return func(opts *ListOptions) {
+		opts.Offset = offset
 	}
 }
 

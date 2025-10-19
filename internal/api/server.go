@@ -293,7 +293,15 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 		if len(statuses) > 0 {
 			opts = append(opts, task.WithStatuses(statuses...))
 		}
+		opts = append(opts, task.WithLimit(parsed))
 	}
+
+	filterOpts, reqErr := parseFilterOptions(query)
+	if reqErr != nil {
+		writeJSONError(w, reqErr.status, reqErr.code, reqErr.message)
+		return
+	}
+	opts = append(opts, filterOpts...)
 
 	if raw := query.Get("since"); raw != "" {
 		ts, err := time.Parse(time.RFC3339, raw)
@@ -521,6 +529,14 @@ func parseFilterOptions(query map[string][]string) ([]task.ListOption, *requestE
 		default:
 			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_ORDER", message: "order 参数仅支持 asc/desc"}
 		}
+	}
+
+	if raw := firstValue(query, "offset"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 0 {
+			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_OFFSET", message: "offset 参数必须为非负整数"}
+		}
+		opts = append(opts, task.WithOffset(parsed))
 	}
 
 	if raw := strings.TrimSpace(firstValue(query, "q")); raw != "" {

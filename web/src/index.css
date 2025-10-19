@@ -244,6 +244,16 @@ button.link:hover {
   gap: 1.2rem;
 }
 
+.load-more {
+  display: flex;
+  justify-content: center;
+  padding-top: 1rem;
+}
+
+.load-more .secondary {
+  min-width: 8rem;
+}
+
 .task-card {
   padding: 1.25rem;
   border-radius: 16px;

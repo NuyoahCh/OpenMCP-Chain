@@ -20,6 +20,9 @@ python examples/task_quickstart.py history --limit 5
 
 # 按关键字筛选历史记录
 python examples/task_quickstart.py history --limit 20 --query balance
+
+# 翻页查看更早的历史记录
+python examples/task_quickstart.py history --limit 20 --offset 20
 ```
 
 > 提示：`--metadata key=value` 可在任务中附加自定义信息，例如 `--metadata project=demo owner=alice`。

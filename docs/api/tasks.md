@@ -65,6 +65,7 @@ curl -X POST http://127.0.0.1:8080/api/v1/tasks \
 | 查询参数 | 描述 |
 | --- | --- |
 | `limit` | 可选，限制返回条数，范围 1–100。 |
+| `offset` | 可选，跳过前 N 条匹配记录，可用于翻页加载历史任务。 |
 | `status` | 可选，过滤指定状态，可多次传入或使用逗号分隔，例如 `status=pending,failed`。 |
 | `since` / `until` | 可选，RFC3339 时间戳，过滤在指定时间区间内更新的任务。 |
 | `has_result` | 可选，布尔值，是否仅返回已有执行结果的任务。 |
@@ -72,6 +73,8 @@ curl -X POST http://127.0.0.1:8080/api/v1/tasks \
 | `q` | 可选，模糊搜索关键词，会匹配任务 ID、目标、链上操作、地址、错误信息以及执行结果。 |
 
 > 例如 `?q=balance` 可快速定位目标或回复中包含 `balance` 关键字的任务。
+
+> 结合 `offset` 可以实现滚动翻页，例如 `?limit=20&offset=20` 将返回第二页任务列表。
 
 ```bash
 curl "http://127.0.0.1:8080/api/v1/tasks?limit=5&status=succeeded&has_result=true"
