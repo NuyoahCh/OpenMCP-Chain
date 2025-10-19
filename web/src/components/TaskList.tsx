@@ -2,18 +2,21 @@ import { formatTimestamp, statusClassName, statusLabel } from "../api";
 import type { TaskItem, TaskStatus } from "../types";
 
 export type TaskStatusFilter = "all" | TaskStatus;
-import type { TaskItem } from "../types";
 
 interface TaskListProps {
   tasks: TaskItem[];
+  totalCount: number;
   onSelect?: (task: TaskItem) => void;
   activeTaskId?: string | null;
   loading?: boolean;
   error?: string | null;
   onRetry?: () => void;
-  statusFilter?: TaskStatusFilter;
-  onStatusFilterChange?: (value: TaskStatusFilter) => void;
+  statusFilter: TaskStatusFilter;
+  onStatusFilterChange: (value: TaskStatusFilter) => void;
   onExport?: () => void;
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
+  onClearSearch?: () => void;
 }
 
 const STATUS_OPTIONS: Array<{ value: TaskStatusFilter; label: string }> = [
@@ -26,22 +29,73 @@ const STATUS_OPTIONS: Array<{ value: TaskStatusFilter; label: string }> = [
 
 export default function TaskList({
   tasks,
+  totalCount,
   onSelect,
   activeTaskId,
   loading,
   error,
   onRetry,
-  statusFilter = "all",
+  statusFilter,
   onStatusFilterChange,
-  onExport
+  onExport,
+  searchQuery,
+  onSearchQueryChange,
+  onClearSearch
 }: TaskListProps) {
-}
+  const renderToolbar = (options?: { disableExport?: boolean }) => {
+    const { disableExport = false } = options ?? {};
+    const canExport = !disableExport && tasks.length > 0;
+    const showClearButton = Boolean(onClearSearch) && searchQuery.trim().length > 0;
+    return (
+      <div className="list-toolbar">
+        <label htmlFor="task-status-filter">状态筛选</label>
+        <select
+          id="task-status-filter"
+          value={statusFilter}
+          onChange={(event) =>
+            onStatusFilterChange(event.target.value as TaskStatusFilter)
+          }
+        >
+          {STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <div className="search-field">
+          <input
+            type="search"
+            placeholder="搜索任务 ID / 目标 / 结果"
+            value={searchQuery}
+            onChange={(event) => onSearchQueryChange(event.target.value)}
+          />
+          {showClearButton ? (
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => onClearSearch?.()}
+            >
+              清除
+            </button>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          className="ghost"
+          onClick={onExport}
+          disabled={!canExport}
+        >
+          导出 JSON
+        </button>
+      </div>
+    );
+  };
 
-export default function TaskList({ tasks, onSelect, activeTaskId, loading, error, onRetry }: TaskListProps) {
   if (loading) {
     return (
       <div className="card">
         <h2 className="section-title">最新任务</h2>
+        {renderToolbar({ disableExport: true })}
         <div className="task-list skeleton">
           {Array.from({ length: 3 }).map((_, index) => (
             <div key={index} className="task-card skeleton-card">
@@ -59,6 +113,7 @@ export default function TaskList({ tasks, onSelect, activeTaskId, loading, error
     return (
       <div className="card">
         <h2 className="section-title">最新任务</h2>
+        {renderToolbar({ disableExport: true })}
         <p className="helper-text" style={{ color: "#fda4af" }}>{error}</p>
         <div className="actions" style={{ marginTop: "1rem" }}>
           <button type="button" className="secondary" onClick={() => onRetry?.()}>
@@ -69,50 +124,34 @@ export default function TaskList({ tasks, onSelect, activeTaskId, loading, error
     );
   }
 
-}
-
-export default function TaskList({ tasks, onSelect, activeTaskId }: TaskListProps) {
   if (!tasks.length) {
+    const hint =
+      statusFilter !== "all" && totalCount > 0
+        ? "当前筛选条件下暂无记录，尝试切换其他状态。"
+        : "暂无历史记录，提交任务后可查看执行轨迹。";
     return (
       <div className="card">
         <h2 className="section-title">最新任务</h2>
-        <p className="helper-text">
-          {statusFilter !== "all"
-            ? "当前筛选条件下暂无记录，尝试切换其他状态。"
-            : "暂无历史记录，提交任务后可查看执行轨迹。"}
-        </p>
-        <p className="helper-text">暂无历史记录，提交任务后可查看执行轨迹。</p>
+        <p className="helper-text">{hint}</p>
+        {renderToolbar({ disableExport: totalCount === 0 })}
       </div>
     );
   }
 
   return (
     <div className="card">
-      <div className="section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div
+        className="section-title"
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+      >
         <span>最新任务</span>
-        <span className="helper-text">自动同步最近 {tasks.length} 条记录</span>
+        <span className="helper-text">
+          {totalCount > tasks.length
+            ? `共 ${totalCount} 条记录，展示最近 ${tasks.length} 条`
+            : `自动同步最近 ${tasks.length} 条记录`}
+        </span>
       </div>
-      <div className="list-toolbar">
-        <label htmlFor="task-status-filter">状态筛选</label>
-        <select
-          id="task-status-filter"
-          value={statusFilter}
-          onChange={(event) => onStatusFilterChange?.(event.target.value as TaskStatusFilter)}
-        >
-          {STATUS_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <button type="button" className="ghost" onClick={onExport} disabled={!tasks.length}>
-          导出 JSON
-        </button>
-      </div>
-      <div className="section-title" style={{ display: "flex", justifyContent: "space-between" }}>
-        <span>最新任务</span>
-        <span className="helper-text">自动同步最近 {tasks.length} 条记录</span>
-      </div>
+      {renderToolbar()}
       <div className="task-list">
         {tasks.map((task) => {
           const isActive = activeTaskId === task.id;

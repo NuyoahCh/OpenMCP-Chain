@@ -80,7 +80,23 @@ func TestClientDeploySubscribeBatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pending nonce: %v", err)
 	}
-	tx := coretypes.NewTransaction(nonce, deployResult.ContractAddress, big.NewInt(0), 120000, big.NewInt(1), nil)
+	head, err := backend.HeaderByNumber(ctx, nil)
+	if err != nil {
+		t.Fatalf("latest header: %v", err)
+	}
+	gasTipCap := big.NewInt(1_000_000_000)
+	gasFeeCap := new(big.Int).Set(gasTipCap)
+	if head.BaseFee != nil {
+		gasFeeCap = new(big.Int).Add(head.BaseFee, gasTipCap)
+	}
+	tx := coretypes.NewTx(&coretypes.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     nonce,
+		GasTipCap: gasTipCap,
+		GasFeeCap: gasFeeCap,
+		Gas:       120000,
+		To:        &deployResult.ContractAddress,
+	})
 	signed, err := coretypes.SignTx(tx, coretypes.LatestSignerForChainID(chainID), key)
 	if err != nil {
 		t.Fatalf("sign tx: %v", err)
@@ -94,9 +110,7 @@ func TestClientDeploySubscribeBatch(t *testing.T) {
 		t.Fatalf("expected 1 hash, got %d", len(hashes))
 	}
 
-	backend.Commit()
-
-	receipt, err := bind.WaitMined(ctx, backend, signed)
+	receipt, err := waitForReceipt(ctx, backend, hashes[0])
 	if err != nil {
 		t.Fatalf("wait mined: %v", err)
 	}

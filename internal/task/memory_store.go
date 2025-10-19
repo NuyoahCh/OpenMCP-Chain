@@ -2,6 +2,9 @@ package task
 
 import (
 	"context"
+	"fmt"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,6 +45,7 @@ func (m *MemoryStore) Create(_ context.Context, task *Task) error {
 		resultCopy := *task.Result
 		clone.Result = &resultCopy
 	}
+	clone.Metadata = cloneMetadata(task.Metadata)
 	m.tasks[task.ID] = &clone
 	return nil
 }
@@ -59,6 +63,7 @@ func (m *MemoryStore) Get(_ context.Context, id string) (*Task, error) {
 		resultCopy := *task.Result
 		clone.Result = &resultCopy
 	}
+	clone.Metadata = cloneMetadata(task.Metadata)
 	return &clone, nil
 }
 
@@ -119,18 +124,41 @@ func (m *MemoryStore) MarkFailed(_ context.Context, id string, code xerrors.Code
 }
 
 // List 返回最近任务。
-func (m *MemoryStore) List(_ context.Context, limit int) ([]*Task, error) {
+func (m *MemoryStore) List(_ context.Context, opts ListOptions) ([]*Task, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if limit <= 0 {
-		limit = len(m.tasks)
-	}
+
+	opts.applyDefaults()
+
 	results := make([]*Task, 0, len(m.tasks))
 	for _, task := range m.tasks {
+		if !matchesListFilters(task, opts) {
+			continue
+		}
 		results = append(results, cloneTask(task))
 	}
-	if len(results) > limit {
-		results = results[:limit]
+
+	sort.Slice(results, func(i, j int) bool {
+		if opts.Order == SortByUpdatedAsc {
+			if results[i].UpdatedAt == results[j].UpdatedAt {
+				if results[i].CreatedAt == results[j].CreatedAt {
+					return results[i].ID < results[j].ID
+				}
+				return results[i].CreatedAt < results[j].CreatedAt
+			}
+			return results[i].UpdatedAt < results[j].UpdatedAt
+		}
+		if results[i].UpdatedAt == results[j].UpdatedAt {
+			if results[i].CreatedAt == results[j].CreatedAt {
+				return results[i].ID < results[j].ID
+			}
+			return results[i].CreatedAt > results[j].CreatedAt
+		}
+		return results[i].UpdatedAt > results[j].UpdatedAt
+	})
+
+	if len(results) > opts.Limit {
+		results = results[:opts.Limit]
 	}
 	return results, nil
 }
@@ -146,7 +174,124 @@ func cloneTask(task *Task) *Task {
 		resultCopy := *task.Result
 		clone.Result = &resultCopy
 	}
+	clone.Metadata = cloneMetadata(task.Metadata)
 	return &clone
+}
+
+func matchesListFilters(task *Task, opts ListOptions) bool {
+	if len(opts.Statuses) > 0 {
+		matched := false
+		for _, status := range opts.Statuses {
+			if task.Status == status {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	if opts.UpdatedGTE > 0 && task.UpdatedAt < opts.UpdatedGTE {
+		return false
+	}
+	if opts.UpdatedLTE > 0 && task.UpdatedAt > opts.UpdatedLTE {
+		return false
+	}
+	if opts.HasResult != nil && taskHasResult(task) != *opts.HasResult {
+		return false
+	}
+	if opts.Query != "" && !taskMatchesQuery(task, opts.Query) {
+		return false
+	}
+	return true
+}
+
+func taskHasResult(task *Task) bool {
+	if task == nil || task.Result == nil {
+		return false
+	}
+	result := task.Result
+	return result.Thought != "" || result.Reply != "" || result.ChainID != "" || result.BlockNumber != "" || result.Observations != ""
+}
+
+func taskMatchesQuery(task *Task, query string) bool {
+	if task == nil {
+		return false
+	}
+	normalized := strings.ToLower(strings.TrimSpace(query))
+	if normalized == "" {
+		return true
+	}
+	candidates := []string{
+		task.ID,
+		task.Goal,
+		task.ChainAction,
+		task.Address,
+		task.LastError,
+	}
+	if task.Result != nil {
+		candidates = append(candidates,
+			task.Result.Thought,
+			task.Result.Reply,
+			task.Result.ChainID,
+			task.Result.BlockNumber,
+			task.Result.Observations,
+		)
+	}
+	for _, value := range candidates {
+		if strings.Contains(strings.ToLower(value), normalized) {
+			return true
+		}
+	}
+	if len(task.Metadata) > 0 {
+		for key, value := range task.Metadata {
+			if strings.Contains(strings.ToLower(key), normalized) {
+				return true
+			}
+			formatted := strings.ToLower(fmt.Sprint(value))
+			if formatted != "" && strings.Contains(formatted, normalized) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Stats 统计符合过滤条件的任务数量与更新时间范围。
+func (m *MemoryStore) Stats(_ context.Context, opts ListOptions) (TaskStats, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	opts.applyDefaults()
+
+	stats := TaskStats{}
+	for _, task := range m.tasks {
+		if !matchesListFilters(task, opts) {
+			continue
+		}
+		stats.Total++
+		switch task.Status {
+		case StatusPending:
+			stats.Pending++
+		case StatusRunning:
+			stats.Running++
+		case StatusSucceeded:
+			stats.Succeeded++
+		case StatusFailed:
+			stats.Failed++
+		}
+		if task.UpdatedAt > stats.NewestUpdatedAt {
+			stats.NewestUpdatedAt = task.UpdatedAt
+		}
+		if stats.OldestUpdatedAt == 0 || (task.UpdatedAt != 0 && task.UpdatedAt < stats.OldestUpdatedAt) {
+			stats.OldestUpdatedAt = task.UpdatedAt
+		}
+	}
+	if stats.Total == 0 {
+		stats.OldestUpdatedAt = 0
+		stats.NewestUpdatedAt = 0
+	}
+	return stats, nil
 }
 
 // ensure interface compliance at compile time

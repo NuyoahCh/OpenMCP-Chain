@@ -345,6 +345,32 @@ button.link:hover {
   color: #e2e8f0;
 }
 
+.list-toolbar .search-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 220px;
+}
+
+.list-toolbar .search-field input[type="search"] {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.6);
+  color: #e2e8f0;
+}
+
+.list-toolbar .search-field input[type="search"]::placeholder {
+  color: rgba(148, 163, 184, 0.55);
+}
+
+.list-toolbar .search-field .ghost {
+  margin-left: 0;
+  white-space: nowrap;
+}
+
 .header {
   display: flex;
   flex-direction: column;
@@ -538,4 +564,23 @@ button.link:hover {
 .toast span {
   font-size: 0.85rem;
   color: rgba(226, 232, 240, 0.72);
+}
+
+.content-grid {
+  display: grid;
+  gap: 1.75rem;
+  margin-top: 2.5rem;
+}
+
+@media (min-width: 1024px) {
+  .content-grid {
+    grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
 }

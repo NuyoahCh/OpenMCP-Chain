@@ -76,6 +76,7 @@ python examples/task_quickstart.py history --limit 5
 | --- | --- | --- |
 | `POST` | `/api/v1/tasks` | 提交一次智能体任务，返回推理输出、链上快照与审计信息。 |
 | `GET` | `/api/v1/tasks` | 查询最近的任务执行记录，支持 `limit` 参数。 |
+| `GET` | `/api/v1/tasks/stats` | 汇总任务数量、状态分布与最近更新时间。 |
 
 ## 示例脚本
 
@@ -86,18 +87,14 @@ python examples/task_quickstart.py history --limit 5
 
 ## 前端控制台
 
-项目提供一个基于 React + Vite 的轻量级前端，帮助快速连调 `/api/v1/tasks` 接口。源码位于 [`web/`](web/README.md)，支持：
+项目提供一个基于 React + Vite 的轻量级前端，帮助快速连调 `/api/v1/tasks` 接口。源码位于 [`web/`](web/README.md)，具备以下能力：
 
-- 图形化填写任务目标、链上操作与链上地址；
+- 图形化填写任务目标、链上操作、可选地址与 Metadata；
 - 实时轮询任务状态，并展示模型思考、回复与链上观测结果；
 - 内置连接诊断与身份认证面板，可检测 API 连通性并缓存访问令牌；
 - 支持通过 UI 或 `VITE_API_BASE_URL` 覆盖后端地址，便于连接自定义环境；
 - 自动检测网络离线/恢复状态，提示用户并暂停轮询，防止误操作；
 - 提供任务状态筛选与 JSON 导出，便于排查与归档执行记录。
-- 支持通过 UI 或 `VITE_API_BASE_URL` 覆盖后端地址，便于连接自定义环境。
-- 图形化填写任务目标、链上操作与 Metadata；
-- 实时轮询任务状态，并展示模型思考、回复与链上观测结果；
-- 可通过 `VITE_API_BASE_URL` 环境变量自定义后端地址。
 
 启动方式：
 
