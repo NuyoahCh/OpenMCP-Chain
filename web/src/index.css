@@ -345,6 +345,32 @@ button.link:hover {
   color: #e2e8f0;
 }
 
+.list-toolbar .search-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 220px;
+}
+
+.list-toolbar .search-field input[type="search"] {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.6);
+  color: #e2e8f0;
+}
+
+.list-toolbar .search-field input[type="search"]::placeholder {
+  color: rgba(148, 163, 184, 0.55);
+}
+
+.list-toolbar .search-field .ghost {
+  margin-left: 0;
+  white-space: nowrap;
+}
+
 .header {
   display: flex;
   flex-direction: column;

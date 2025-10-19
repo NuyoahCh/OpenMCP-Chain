@@ -13,6 +13,8 @@ func TestMemoryStoreListWithFilters(t *testing.T) {
 	base := time.Now().Add(-2 * time.Minute)
 
 	tasks := []*Task{
+		{ID: "t1", Goal: "g1", Status: StatusPending, MaxRetries: 3, Metadata: map[string]any{"owner": "alice"}},
+		{ID: "t2", Goal: "g2", Status: StatusFailed, MaxRetries: 3, Metadata: map[string]any{"owner": "bob"}},
 		{ID: "t1", Goal: "g1", Status: StatusPending, MaxRetries: 3},
 		{ID: "t2", Goal: "g2", Status: StatusFailed, MaxRetries: 3},
 		{ID: "t3", Goal: "g3", Status: StatusSucceeded, MaxRetries: 3},
@@ -73,6 +75,22 @@ func TestMemoryStoreListWithFilters(t *testing.T) {
 	if len(recent) != 2 {
 		t.Fatalf("expected 2 tasks to match since filter, got %d", len(recent))
 	}
+
+	matchedGoal, err := store.List(ctx, buildListOptions([]ListOption{WithQuery("g3")}))
+	if err != nil {
+		t.Fatalf("list with query on goal: %v", err)
+	}
+	if len(matchedGoal) != 1 || matchedGoal[0].ID != "t3" {
+		t.Fatalf("unexpected query goal list: %+v", matchedGoal)
+	}
+
+	matchedMetadata, err := store.List(ctx, buildListOptions([]ListOption{WithQuery("alice")}))
+	if err != nil {
+		t.Fatalf("list with metadata query: %v", err)
+	}
+	if len(matchedMetadata) != 1 || matchedMetadata[0].ID != "t1" {
+		t.Fatalf("unexpected metadata query list: %+v", matchedMetadata)
+	}
 }
 
 func TestMemoryStoreStats(t *testing.T) {
@@ -82,6 +100,7 @@ func TestMemoryStoreStats(t *testing.T) {
 	base := time.Now().Add(-3 * time.Minute)
 	tasks := []*Task{
 		{ID: "a", Goal: "g1", Status: StatusPending, MaxRetries: 3},
+		{ID: "b", Goal: "g2", Status: StatusPending, MaxRetries: 3, Metadata: map[string]any{"team": "infra"}},
 		{ID: "b", Goal: "g2", Status: StatusPending, MaxRetries: 3},
 		{ID: "c", Goal: "g3", Status: StatusPending, MaxRetries: 3},
 	}
@@ -142,5 +161,21 @@ func TestMemoryStoreStats(t *testing.T) {
 	}
 	if failedOnly.Total != 1 || failedOnly.Failed != 1 {
 		t.Fatalf("unexpected failed stats: %+v", failedOnly)
+	}
+
+	goalStats, err := store.Stats(ctx, buildListOptions([]ListOption{WithQuery("g3")}))
+	if err != nil {
+		t.Fatalf("stats with goal query: %v", err)
+	}
+	if goalStats.Total != 1 || goalStats.Succeeded != 1 {
+		t.Fatalf("unexpected stats for goal query: %+v", goalStats)
+	}
+
+	metadataStats, err := store.Stats(ctx, buildListOptions([]ListOption{WithQuery("infra")}))
+	if err != nil {
+		t.Fatalf("stats with metadata query: %v", err)
+	}
+	if metadataStats.Total != 1 || metadataStats.Failed != 1 {
+		t.Fatalf("unexpected stats for metadata query: %+v", metadataStats)
 	}
 }

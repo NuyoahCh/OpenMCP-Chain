@@ -290,6 +290,7 @@ func (s *MySQLStore) List(ctx context.Context, opts ListOptions) ([]*Task, error
 		query += " WHERE " + clause
 	}
 
+
 	conditions := make([]string, 0, 4)
 	args := make([]any, 0, 6)
 
@@ -486,6 +487,23 @@ func buildFilterClause(opts ListOptions) (string, []any) {
 		} else {
 			conditions = append(conditions, "(result_thought = '' AND result_reply = '' AND result_chain_id = '' AND result_block_number = '' AND (result_observations IS NULL OR result_observations = ''))")
 		}
+	}
+	if opts.Query != "" {
+		pattern := "%" + opts.Query + "%"
+		conditions = append(conditions, "(id LIKE ? OR goal LIKE ? OR chain_action LIKE ? OR address LIKE ? OR metadata LIKE ? OR last_error LIKE ? OR result_thought LIKE ? OR result_reply LIKE ? OR result_chain_id LIKE ? OR result_block_number LIKE ? OR result_observations LIKE ?)")
+		args = append(args,
+			pattern,
+			pattern,
+			pattern,
+			pattern,
+			pattern,
+			pattern,
+			pattern,
+			pattern,
+			pattern,
+			pattern,
+			pattern,
+		)
 	}
 
 	if len(conditions) == 0 {

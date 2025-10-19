@@ -14,6 +14,9 @@ interface TaskListProps {
   statusFilter: TaskStatusFilter;
   onStatusFilterChange: (value: TaskStatusFilter) => void;
   onExport?: () => void;
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
+  onClearSearch?: () => void;
 }
 
 const STATUS_OPTIONS: Array<{ value: TaskStatusFilter; label: string }> = [
@@ -34,12 +37,65 @@ export default function TaskList({
   onRetry,
   statusFilter,
   onStatusFilterChange,
-  onExport
+  onExport,
+  searchQuery,
+  onSearchQueryChange,
+  onClearSearch
 }: TaskListProps) {
+  const renderToolbar = (options?: { disableExport?: boolean }) => {
+    const { disableExport = false } = options ?? {};
+    const canExport = !disableExport && tasks.length > 0;
+    const showClearButton = Boolean(onClearSearch) && searchQuery.trim().length > 0;
+    return (
+      <div className="list-toolbar">
+        <label htmlFor="task-status-filter">状态筛选</label>
+        <select
+          id="task-status-filter"
+          value={statusFilter}
+          onChange={(event) =>
+            onStatusFilterChange(event.target.value as TaskStatusFilter)
+          }
+        >
+          {STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <div className="search-field">
+          <input
+            type="search"
+            placeholder="搜索任务 ID / 目标 / 结果"
+            value={searchQuery}
+            onChange={(event) => onSearchQueryChange(event.target.value)}
+          />
+          {showClearButton ? (
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => onClearSearch?.()}
+            >
+              清除
+            </button>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          className="ghost"
+          onClick={onExport}
+          disabled={!canExport}
+        >
+          导出 JSON
+        </button>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="card">
         <h2 className="section-title">最新任务</h2>
+        {renderToolbar({ disableExport: true })}
         <div className="task-list skeleton">
           {Array.from({ length: 3 }).map((_, index) => (
             <div key={index} className="task-card skeleton-card">
@@ -57,6 +113,7 @@ export default function TaskList({
     return (
       <div className="card">
         <h2 className="section-title">最新任务</h2>
+        {renderToolbar({ disableExport: true })}
         <p className="helper-text" style={{ color: "#fda4af" }}>{error}</p>
         <div className="actions" style={{ marginTop: "1rem" }}>
           <button type="button" className="secondary" onClick={() => onRetry?.()}>
@@ -76,6 +133,7 @@ export default function TaskList({
       <div className="card">
         <h2 className="section-title">最新任务</h2>
         <p className="helper-text">{hint}</p>
+        {renderToolbar({ disableExport: totalCount === 0 })}
         <div className="list-toolbar">
           <label htmlFor="task-status-filter">状态筛选</label>
           <select
@@ -110,6 +168,7 @@ export default function TaskList({
             : `自动同步最近 ${tasks.length} 条记录`}
         </span>
       </div>
+      {renderToolbar()}
       <div className="list-toolbar">
         <label htmlFor="task-status-filter">状态筛选</label>
         <select

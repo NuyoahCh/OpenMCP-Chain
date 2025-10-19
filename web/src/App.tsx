@@ -68,18 +68,75 @@ export default function App() {
   const [testingConnection, setTestingConnection] = useState(false);
   const [requiresAuth, setRequiresAuth] = useState(false);
   const [statusFilter, setStatusFilter] = useState<TaskStatusFilter>("all");
+  const [searchInput, setSearchInput] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
   const { baseUrl, defaultBaseUrl, update, reset } = useApiBaseUrl();
   const { toast, showToast } = useToast();
   const { auth, login, logout, isExpired } = useAuth();
   const { isOnline, lastChanged, connectionType } = useNetworkStatus();
   const networkChangeRef = useRef(false);
 
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      const next = searchInput.trim();
+      setAppliedSearch((current) => (current === next ? current : next));
+    }, 360);
+    return () => clearTimeout(handler);
+  }, [searchInput]);
+
   const filteredTasks = useMemo(() => {
-    if (statusFilter === "all") {
-      return tasks;
-    }
-    return tasks.filter((task) => task.status === statusFilter);
-  }, [statusFilter, tasks]);
+    const normalizedSearch = appliedSearch.toLowerCase();
+    const matchesSearch = (task: TaskItem) => {
+      if (!normalizedSearch) {
+        return true;
+      }
+      const toCandidate = (value: unknown) => {
+        if (value === null || value === undefined) {
+          return "";
+        }
+        if (typeof value === "string") {
+          return value;
+        }
+        if (typeof value === "number" || typeof value === "boolean") {
+          return String(value);
+        }
+        try {
+          return JSON.stringify(value);
+        } catch (error) {
+          console.warn("无法序列化任务字段", error);
+          return String(value);
+        }
+      };
+      const candidates = [
+        task.id,
+        task.goal,
+        task.chain_action ?? "",
+        task.address ?? "",
+        task.last_error ?? "",
+        task.result?.thought ?? "",
+        task.result?.reply ?? "",
+        task.result?.observations ?? "",
+        task.result?.chain_id ?? "",
+        task.result?.block_number ?? "",
+      ];
+      if (task.metadata) {
+        for (const [key, value] of Object.entries(task.metadata)) {
+          candidates.push(key);
+          candidates.push(toCandidate(value));
+        }
+      }
+      return candidates.some((candidate) =>
+        toCandidate(candidate).toLowerCase().includes(normalizedSearch),
+      );
+    };
+
+    return tasks.filter((task) => {
+      if (statusFilter !== "all" && task.status !== statusFilter) {
+        return false;
+      }
+      return matchesSearch(task);
+    });
+  }, [appliedSearch, statusFilter, tasks]);
 
   useEffect(() => {
     setActiveTask((current) => {
@@ -121,6 +178,19 @@ export default function App() {
         if (statusFilter !== "all") {
           query.status = statusFilter;
         }
+        if (appliedSearch) {
+          query.search = appliedSearch;
+        }
+        const statsQuery: Parameters<typeof fetchTaskStats>[0] = {};
+        if (statusFilter !== "all") {
+          statsQuery.status = statusFilter;
+        }
+        if (appliedSearch) {
+          statsQuery.search = appliedSearch;
+        }
+        const [listResult, statsResult] = await Promise.allSettled([
+          listTasks(query),
+          fetchTaskStats(statsQuery),
         const [listResult, statsResult] = await Promise.allSettled([
           listTasks(query),
           fetchTaskStats(),
@@ -180,6 +250,7 @@ export default function App() {
         setInitialLoading(false);
       }
     },
+    [appliedSearch, isOnline, showToast, statusFilter],
     [isOnline, showToast, statusFilter],
   );
 
@@ -256,6 +327,11 @@ export default function App() {
   }, []);
 
   const handleExport = useCallback(() => {
+    if (!filteredTasks.length) {
+      return;
+    }
+    const blob = new Blob([JSON.stringify(filteredTasks, null, 2)], {
+      type: "application/json;charset=utf-8",
     if (!tasks.length) {
       return;
     }
@@ -270,6 +346,7 @@ export default function App() {
     anchor.click();
     URL.revokeObjectURL(url);
     showToast({ title: "已导出", message: "任务列表 JSON 已下载" });
+  }, [filteredTasks, showToast]);
   }, [tasks, showToast]);
 
   const handleTestConnection = useCallback(async () => {
@@ -371,6 +448,8 @@ export default function App() {
             tasks={tasks}
             stats={taskStats}
             loading={initialLoading && !taskStats}
+            searchQuery={appliedSearch}
+          />
           />
               <span>{offlineHint ? `最后在线时间：${offlineHint}` : "恢复联网后会自动同步。"}</span>
             </div>
@@ -434,6 +513,7 @@ export default function App() {
         </div>
         <TaskList
           tasks={filteredTasks}
+          totalCount={taskStats?.total ?? filteredTasks.length}
           totalCount={taskStats?.total ?? tasks.length}
           totalCount={tasks.length}
           onSelect={handleSelectTask}
@@ -444,6 +524,9 @@ export default function App() {
           statusFilter={statusFilter}
           onStatusFilterChange={setStatusFilter}
           onExport={handleExport}
+          searchQuery={searchInput}
+          onSearchQueryChange={setSearchInput}
+          onClearSearch={() => setSearchInput("")}
         />
       </section>
 

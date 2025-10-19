@@ -1,5 +1,9 @@
 package task
 
+import (
+	"strings"
+	"time"
+)
 import "time"
 
 // SortOrder defines how results should be ordered when listing tasks.
@@ -20,6 +24,7 @@ type ListOptions struct {
 	UpdatedLTE int64
 	HasResult  *bool
 	Order      SortOrder
+	Query      string
 }
 
 // applyDefaults sanitizes the options and fills in default values.
@@ -36,6 +41,7 @@ func (opts *ListOptions) applyDefaults() {
 	if opts.Order != SortByUpdatedAsc {
 		opts.Order = SortByUpdatedDesc
 	}
+	opts.Query = strings.TrimSpace(opts.Query)
 }
 
 // ListOption mutates ListOptions.
@@ -89,6 +95,13 @@ func WithResultPresence(hasResult bool) ListOption {
 func WithSortOrder(order SortOrder) ListOption {
 	return func(opts *ListOptions) {
 		opts.Order = order
+	}
+}
+
+// WithQuery filters tasks by fuzzy matching across goal, address and result fields.
+func WithQuery(query string) ListOption {
+	return func(opts *ListOptions) {
+		opts.Query = query
 	}
 }
 

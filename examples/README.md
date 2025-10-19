@@ -17,6 +17,9 @@ python examples/task_quickstart.py invoke \
 
 # 获取最近的 5 条历史记录
 python examples/task_quickstart.py history --limit 5
+
+# 按关键字筛选历史记录
+python examples/task_quickstart.py history --limit 20 --query balance
 ```
 
 > 提示：`--metadata key=value` 可在任务中附加自定义信息，例如 `--metadata project=demo owner=alice`。

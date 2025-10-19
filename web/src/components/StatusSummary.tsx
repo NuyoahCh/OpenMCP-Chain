@@ -5,6 +5,7 @@ interface StatusSummaryProps {
   tasks: TaskItem[];
   stats?: TaskStats | null;
   loading?: boolean;
+  searchQuery?: string;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -14,6 +15,12 @@ const STATUS_LABELS: Record<string, string> = {
   failed: "失败"
 };
 
+export default function StatusSummary({
+  tasks,
+  stats,
+  loading,
+  searchQuery
+}: StatusSummaryProps) {
 export default function StatusSummary({ tasks, stats, loading }: StatusSummaryProps) {
   const summary = stats
     ? {
@@ -53,6 +60,9 @@ export default function StatusSummary({ tasks, stats, loading }: StatusSummaryPr
       parts.push(`最新目标：${lastGoal}`);
     } else {
       parts.push("等待创建新的任务");
+    }
+    if (searchQuery) {
+      parts.push(`关键字：${searchQuery}`);
     }
     return parts.join(" · ");
   })();

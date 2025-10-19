@@ -69,6 +69,9 @@ curl -X POST http://127.0.0.1:8080/api/v1/tasks \
 | `since` / `until` | 可选，RFC3339 时间戳，过滤在指定时间区间内更新的任务。 |
 | `has_result` | 可选，布尔值，是否仅返回已有执行结果的任务。 |
 | `order` | 可选，`asc` 或 `desc`，控制更新时间排序方向，默认 `desc`。 |
+| `q` | 可选，模糊搜索关键词，会匹配任务 ID、目标、链上操作、地址、错误信息以及执行结果。 |
+
+> 例如 `?q=balance` 可快速定位目标或回复中包含 `balance` 关键字的任务。
 
 ```bash
 curl "http://127.0.0.1:8080/api/v1/tasks?limit=5&status=succeeded&has_result=true"
@@ -103,6 +106,7 @@ curl "http://127.0.0.1:8080/api/v1/tasks?limit=5&status=succeeded&has_result=tru
 
 ## 任务统计概览 `GET /api/v1/tasks/stats`
 
+返回符合过滤条件的任务数量与状态分布，便于在仪表盘中展示总览信息或构建健康检查。支持的查询参数与 `GET /api/v1/tasks` 相同（除 `limit` 外），包括模糊搜索 `q` 参数，例如：
 返回符合过滤条件的任务数量与状态分布，便于在仪表盘中展示总览信息或构建健康检查。支持的查询参数与 `GET /api/v1/tasks` 相同（除 `limit` 外），例如：
 
 ```bash

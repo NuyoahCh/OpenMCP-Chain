@@ -2,6 +2,9 @@ package task
 
 import (
 	"context"
+	"fmt"
+	"sort"
+	"strings"
 	"sort"
 	"sync"
 	"time"
@@ -131,6 +134,9 @@ func (m *MemoryStore) List(_ context.Context, opts ListOptions) ([]*Task, error)
 	results := make([]*Task, 0, len(m.tasks))
 	for _, task := range m.tasks {
 		if !matchesListFilters(task, opts) {
+	results := make([]*Task, 0, len(m.tasks))
+	for _, task := range m.tasks {
+		if !matchesListFilters(task, opts) {
 	matchesStatus := func(task *Task) bool {
 		if len(opts.Statuses) == 0 {
 			return true
@@ -232,6 +238,9 @@ func matchesListFilters(task *Task, opts ListOptions) bool {
 	if opts.HasResult != nil && taskHasResult(task) != *opts.HasResult {
 		return false
 	}
+	if opts.Query != "" && !taskMatchesQuery(task, opts.Query) {
+		return false
+	}
 	return true
 }
 
@@ -241,6 +250,49 @@ func taskHasResult(task *Task) bool {
 	}
 	result := task.Result
 	return result.Thought != "" || result.Reply != "" || result.ChainID != "" || result.BlockNumber != "" || result.Observations != ""
+}
+
+func taskMatchesQuery(task *Task, query string) bool {
+	if task == nil {
+		return false
+	}
+	normalized := strings.ToLower(strings.TrimSpace(query))
+	if normalized == "" {
+		return true
+	}
+	candidates := []string{
+		task.ID,
+		task.Goal,
+		task.ChainAction,
+		task.Address,
+		task.LastError,
+	}
+	if task.Result != nil {
+		candidates = append(candidates,
+			task.Result.Thought,
+			task.Result.Reply,
+			task.Result.ChainID,
+			task.Result.BlockNumber,
+			task.Result.Observations,
+		)
+	}
+	for _, value := range candidates {
+		if strings.Contains(strings.ToLower(value), normalized) {
+			return true
+		}
+	}
+	if len(task.Metadata) > 0 {
+		for key, value := range task.Metadata {
+			if strings.Contains(strings.ToLower(key), normalized) {
+				return true
+			}
+			formatted := strings.ToLower(fmt.Sprint(value))
+			if formatted != "" && strings.Contains(formatted, normalized) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Stats 统计符合过滤条件的任务数量与更新时间范围。

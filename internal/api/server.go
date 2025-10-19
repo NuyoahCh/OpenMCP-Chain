@@ -276,6 +276,14 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 		opts = append(opts, task.WithLimit(parsed))
 	}
 
+	filterOpts, reqErr := parseFilterOptions(query)
+	if reqErr != nil {
+		writeJSONError(w, reqErr.status, reqErr.code, reqErr.message)
+		return
+		}
+		opts = append(opts, task.WithLimit(parsed))
+	}
+
 	if rawStatuses, ok := query["status"]; ok {
 		statuses, err := parseStatusFilters(rawStatuses)
 		if err != nil {
@@ -313,6 +321,7 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 		}
 		opts = append(opts, task.WithResultPresence(parsed))
 	}
+	opts = append(opts, filterOpts...)
 
 	if raw := strings.ToLower(query.Get("order")); raw != "" {
 		switch raw {
@@ -512,6 +521,10 @@ func parseFilterOptions(query map[string][]string) ([]task.ListOption, *requestE
 		default:
 			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_ORDER", message: "order 参数仅支持 asc/desc"}
 		}
+	}
+
+	if raw := strings.TrimSpace(firstValue(query, "q")); raw != "" {
+		opts = append(opts, task.WithQuery(raw))
 	}
 
 	return opts, nil
