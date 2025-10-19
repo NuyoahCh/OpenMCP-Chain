@@ -280,6 +280,74 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	if reqErr != nil {
 		writeJSONError(w, reqErr.status, reqErr.code, reqErr.message)
 		return
+		}
+		opts = append(opts, task.WithLimit(parsed))
+	}
+
+	if rawStatuses, ok := query["status"]; ok {
+		statuses, err := parseStatusFilters(rawStatuses)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "INVALID_STATUS", err.Error())
+			return
+		}
+		if len(statuses) > 0 {
+			opts = append(opts, task.WithStatuses(statuses...))
+		}
+		opts = append(opts, task.WithLimit(parsed))
+	}
+
+	filterOpts, reqErr := parseFilterOptions(query)
+	if reqErr != nil {
+		writeJSONError(w, reqErr.status, reqErr.code, reqErr.message)
+		return
+	}
+	opts = append(opts, filterOpts...)
+
+	if raw := query.Get("since"); raw != "" {
+		ts, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "INVALID_SINCE", "since 参数需为 RFC3339 时间格式")
+			return
+		}
+		opts = append(opts, task.WithUpdatedSince(ts))
+	}
+
+	if raw := query.Get("until"); raw != "" {
+		ts, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "INVALID_UNTIL", "until 参数需为 RFC3339 时间格式")
+			return
+		}
+		opts = append(opts, task.WithUpdatedUntil(ts))
+	}
+
+	if raw := query.Get("has_result"); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "INVALID_HAS_RESULT", "has_result 参数需为布尔值")
+			return
+		}
+		opts = append(opts, task.WithResultPresence(parsed))
+	}
+	opts = append(opts, filterOpts...)
+
+	if raw := strings.ToLower(query.Get("order")); raw != "" {
+		switch raw {
+		case "asc":
+			opts = append(opts, task.WithSortOrder(task.SortByUpdatedAsc))
+		case "desc":
+			opts = append(opts, task.WithSortOrder(task.SortByUpdatedDesc))
+		default:
+			writeJSONError(w, http.StatusBadRequest, "INVALID_ORDER", "order 参数仅支持 asc/desc")
+			return
+		}
+		opts = append(opts, task.WithLimit(parsed))
+	}
+
+	filterOpts, reqErr := parseFilterOptions(query)
+	if reqErr != nil {
+		writeJSONError(w, reqErr.status, reqErr.code, reqErr.message)
+		return
 	}
 	opts = append(opts, filterOpts...)
 

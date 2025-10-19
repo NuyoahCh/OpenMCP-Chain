@@ -110,6 +110,7 @@ curl "http://127.0.0.1:8080/api/v1/tasks?limit=5&status=succeeded&has_result=tru
 ## 任务统计概览 `GET /api/v1/tasks/stats`
 
 返回符合过滤条件的任务数量与状态分布，便于在仪表盘中展示总览信息或构建健康检查。支持的查询参数与 `GET /api/v1/tasks` 相同（除 `limit` 外），包括模糊搜索 `q` 参数，例如：
+返回符合过滤条件的任务数量与状态分布，便于在仪表盘中展示总览信息或构建健康检查。支持的查询参数与 `GET /api/v1/tasks` 相同（除 `limit` 外），例如：
 
 ```bash
 curl "http://127.0.0.1:8080/api/v1/tasks/stats?since=2024-05-01T00:00:00Z&has_result=true"
