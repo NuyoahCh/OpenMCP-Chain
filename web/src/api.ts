@@ -4,6 +4,7 @@ import type {
   CreateTaskResponse,
   TaskItem,
   TaskStatus,
+  TaskStatus
 } from "./types";
 
 export class UnauthorizedError extends Error {
@@ -152,6 +153,8 @@ async function fetchWithTimeout(
     headers,
     ...init
   } = options;
+async function fetchWithTimeout(input: string, options: RequestOptions = {}): Promise<Response> {
+  const { timeout = DEFAULT_TIMEOUT, signal, skipAuth, headers, ...init } = options;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
 
@@ -173,6 +176,7 @@ async function fetchWithTimeout(
         "Authorization",
         `${state.tokenType || "Bearer"} ${state.accessToken}`,
       );
+      mergedHeaders.set("Authorization", `${state.tokenType || "Bearer"} ${state.accessToken}`);
     }
   }
 
@@ -182,6 +186,7 @@ async function fetchWithTimeout(
       headers: mergedHeaders,
       signal: controller.signal,
     });
+    const response = await fetch(input, { ...init, headers: mergedHeaders, signal: controller.signal });
     if (response.status === 401) {
       clearAuth();
     }
@@ -233,6 +238,10 @@ async function request<T>(
   const response = await fetchWithTimeout(buildUrl(path), {
     headers: { "Content-Type": "application/json" },
     ...options,
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const response = await fetchWithTimeout(buildUrl(path), {
+    headers: { "Content-Type": "application/json" },
+    ...options
   });
   return parseJsonResponse<T>(response);
 }
@@ -416,6 +425,117 @@ export async function authenticate(
     refreshExpiresAt,
     scope,
     username: credentials.username,
+  };
+  setAuthState(next);
+  return next;
+}
+
+export function logout() {
+  clearAuth();
+}
+export async function createTask(payload: CreateTaskRequest): Promise<CreateTaskResponse> {
+  return request<CreateTaskResponse>("/api/v1/tasks", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function listTasks(limit = 20): Promise<TaskItem[]> {
+  const search = new URLSearchParams({ limit: String(limit) });
+  return request<TaskItem[]>(`/api/v1/tasks?${search.toString()}`);
+}
+
+export async function fetchTask(id: string): Promise<TaskItem> {
+  const search = new URLSearchParams({ id });
+  return request<TaskItem>(`/api/v1/tasks?${search.toString()}`);
+}
+
+export async function verifyApiConnection(): Promise<void> {
+  await request<TaskItem[]>("/api/v1/tasks?limit=1", { timeout: 10_000 });
+}
+
+export function statusLabel(status: TaskStatus): string {
+  switch (status) {
+    case "pending":
+      return "等待执行";
+    case "running":
+      return "执行中";
+    case "succeeded":
+      return "已完成";
+    case "failed":
+      return "失败";
+    default:
+      return status;
+  }
+}
+
+export function statusClassName(status: TaskStatus): string {
+  return `status-badge status-${status}`;
+}
+
+export function formatTimestamp(timestamp: number | null | undefined): string {
+  if (!timestamp) {
+    return "-";
+  }
+  const date = new Date(timestamp * 1000);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+}
+
+export function getAuthState(): AuthState | null {
+  return authState;
+}
+
+export function clearAuth() {
+  setAuthState(null);
+}
+
+export function subscribeAuth(listener: AuthListener) {
+  authListeners.add(listener);
+  return () => {
+    authListeners.delete(listener);
+  };
+}
+
+export function isAuthExpired(state: AuthState | null | undefined): boolean {
+  if (!state?.expiresAt) {
+    return false;
+  }
+  return state.expiresAt <= Date.now();
+}
+
+export async function authenticate(credentials: AuthCredentials): Promise<AuthState> {
+  const response = await request<AuthTokenResponse>("/api/v1/auth/token", {
+    method: "POST",
+    body: JSON.stringify({
+      grant_type: "password",
+      username: credentials.username,
+      password: credentials.password,
+      scope: credentials.scope
+    }),
+    skipAuth: true
+  });
+
+  const expiresAt = response.expires_in ? Date.now() + response.expires_in * 1000 : undefined;
+  const refreshExpiresAt = response.refresh_expires_in
+    ? Date.now() + response.refresh_expires_in * 1000
+    : undefined;
+  const scope = Array.isArray(response.scope)
+    ? response.scope
+    : typeof response.scope === "string"
+      ? response.scope.split(/[\s,]+/).filter(Boolean)
+      : undefined;
+
+  const next: AuthState = {
+    accessToken: response.access_token,
+    tokenType: response.token_type || "Bearer",
+    expiresAt,
+    refreshToken: response.refresh_token,
+    refreshExpiresAt,
+    scope,
+    username: credentials.username
   };
   setAuthState(next);
   return next;

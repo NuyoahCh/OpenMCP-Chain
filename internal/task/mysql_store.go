@@ -313,6 +313,9 @@ func (s *MySQLStore) List(ctx context.Context, opts ListOptions) ([]*Task, error
 			conditions = append(conditions, "(result_thought = '' AND result_reply = '' AND result_chain_id = '' AND result_block_number = '' AND (result_observations IS NULL OR result_observations = ''))")
 		}
 	}
+	const stmt = `SELECT id, goal, chain_action, address, metadata, status, attempts, max_retries, last_error, error_code,
+        result_thought, result_reply, result_chain_id, result_block_number, result_observations, created_at, updated_at
+        FROM task_states ORDER BY created_at DESC LIMIT ?`
 
 	if len(conditions) > 0 {
 		query += " WHERE " + strings.Join(conditions, " AND ")
