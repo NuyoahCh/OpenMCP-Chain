@@ -72,6 +72,7 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	// 应用请求日志中间件。
 	mux.Handle("/api/v1/tasks", s.instrument("tasks", taskHandler))
+	mux.Handle("/api/v1/tasks/stats", s.instrument("task_stats", http.HandlerFunc(s.handleTaskStats)))
 	mux.Handle("/api/v1/auth/token", s.instrument("auth_token", http.HandlerFunc(s.handleAuthToken)))
 	// 如果启用指标采集，注册指标处理器。
 	if s.metricsEnabled {
@@ -323,7 +324,15 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 			writeJSONError(w, http.StatusBadRequest, "INVALID_ORDER", "order 参数仅支持 asc/desc")
 			return
 		}
+		opts = append(opts, task.WithLimit(parsed))
 	}
+
+	filterOpts, reqErr := parseFilterOptions(query)
+	if reqErr != nil {
+		writeJSONError(w, reqErr.status, reqErr.code, reqErr.message)
+		return
+	}
+	opts = append(opts, filterOpts...)
 
 	// 列出任务。
 	tasks, err := s.tasks.List(ctx, opts...)
@@ -341,6 +350,39 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	// 返回任务列表响应。
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(tasks)
+}
+
+// handleTaskStats 处理任务统计查询请求。
+func (s *Server) handleTaskStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "仅支持 GET")
+		return
+	}
+	if s.tasks == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, string(xerrors.CodeInitializationFailure), "任务服务未初始化")
+		return
+	}
+
+	filterOpts, reqErr := parseFilterOptions(r.URL.Query())
+	if reqErr != nil {
+		writeJSONError(w, reqErr.status, reqErr.code, reqErr.message)
+		return
+	}
+
+	stats, err := s.tasks.Stats(r.Context(), filterOpts...)
+	if err != nil {
+		logger.L().Error("统计任务失败", slog.Any("error", err))
+		status := statusFromError(err)
+		code := string(xerrors.CodeOf(err))
+		if code == "" {
+			code = "TASK_STATS_FAILED"
+		}
+		writeJSONError(w, status, code, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(stats)
 }
 
 // statusWriter 包装 http.ResponseWriter 以捕获响应状态码。
@@ -416,6 +458,71 @@ func writeJSONError(w http.ResponseWriter, status int, code, message string) {
 	if err := json.NewEncoder(w).Encode(errorResponse{Code: code, Message: message}); err != nil {
 		logger.L().Error("输出错误响应失败", slog.Any("error", err))
 	}
+}
+
+type requestError struct {
+	status  int
+	code    string
+	message string
+}
+
+func parseFilterOptions(query map[string][]string) ([]task.ListOption, *requestError) {
+	opts := make([]task.ListOption, 0, 4)
+
+	if rawStatuses, ok := query["status"]; ok {
+		statuses, err := parseStatusFilters(rawStatuses)
+		if err != nil {
+			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_STATUS", message: err.Error()}
+		}
+		if len(statuses) > 0 {
+			opts = append(opts, task.WithStatuses(statuses...))
+		}
+	}
+
+	if raw := firstValue(query, "since"); raw != "" {
+		ts, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_SINCE", message: "since 参数需为 RFC3339 时间格式"}
+		}
+		opts = append(opts, task.WithUpdatedSince(ts))
+	}
+
+	if raw := firstValue(query, "until"); raw != "" {
+		ts, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_UNTIL", message: "until 参数需为 RFC3339 时间格式"}
+		}
+		opts = append(opts, task.WithUpdatedUntil(ts))
+	}
+
+	if raw := firstValue(query, "has_result"); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_HAS_RESULT", message: "has_result 参数需为布尔值"}
+		}
+		opts = append(opts, task.WithResultPresence(parsed))
+	}
+
+	if raw := strings.ToLower(firstValue(query, "order")); raw != "" {
+		switch raw {
+		case "asc":
+			opts = append(opts, task.WithSortOrder(task.SortByUpdatedAsc))
+		case "desc":
+			opts = append(opts, task.WithSortOrder(task.SortByUpdatedDesc))
+		default:
+			return nil, &requestError{status: http.StatusBadRequest, code: "INVALID_ORDER", message: "order 参数仅支持 asc/desc"}
+		}
+	}
+
+	return opts, nil
+}
+
+func firstValue(values map[string][]string, key string) string {
+	items, ok := values[key]
+	if !ok || len(items) == 0 {
+		return ""
+	}
+	return items[0]
 }
 
 func parseStatusFilters(values []string) ([]task.Status, error) {

@@ -128,6 +128,9 @@ func (m *MemoryStore) List(_ context.Context, opts ListOptions) ([]*Task, error)
 
 	opts.applyDefaults()
 
+	results := make([]*Task, 0, len(m.tasks))
+	for _, task := range m.tasks {
+		if !matchesListFilters(task, opts) {
 	matchesStatus := func(task *Task) bool {
 		if len(opts.Statuses) == 0 {
 			return true
@@ -205,6 +208,76 @@ func cloneTask(task *Task) *Task {
 	}
 	clone.Metadata = cloneMetadata(task.Metadata)
 	return &clone
+}
+
+func matchesListFilters(task *Task, opts ListOptions) bool {
+	if len(opts.Statuses) > 0 {
+		matched := false
+		for _, status := range opts.Statuses {
+			if task.Status == status {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	if opts.UpdatedGTE > 0 && task.UpdatedAt < opts.UpdatedGTE {
+		return false
+	}
+	if opts.UpdatedLTE > 0 && task.UpdatedAt > opts.UpdatedLTE {
+		return false
+	}
+	if opts.HasResult != nil && taskHasResult(task) != *opts.HasResult {
+		return false
+	}
+	return true
+}
+
+func taskHasResult(task *Task) bool {
+	if task == nil || task.Result == nil {
+		return false
+	}
+	result := task.Result
+	return result.Thought != "" || result.Reply != "" || result.ChainID != "" || result.BlockNumber != "" || result.Observations != ""
+}
+
+// Stats 统计符合过滤条件的任务数量与更新时间范围。
+func (m *MemoryStore) Stats(_ context.Context, opts ListOptions) (TaskStats, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	opts.applyDefaults()
+
+	stats := TaskStats{}
+	for _, task := range m.tasks {
+		if !matchesListFilters(task, opts) {
+			continue
+		}
+		stats.Total++
+		switch task.Status {
+		case StatusPending:
+			stats.Pending++
+		case StatusRunning:
+			stats.Running++
+		case StatusSucceeded:
+			stats.Succeeded++
+		case StatusFailed:
+			stats.Failed++
+		}
+		if task.UpdatedAt > stats.NewestUpdatedAt {
+			stats.NewestUpdatedAt = task.UpdatedAt
+		}
+		if stats.OldestUpdatedAt == 0 || (task.UpdatedAt != 0 && task.UpdatedAt < stats.OldestUpdatedAt) {
+			stats.OldestUpdatedAt = task.UpdatedAt
+		}
+	}
+	if stats.Total == 0 {
+		stats.OldestUpdatedAt = 0
+		stats.NewestUpdatedAt = 0
+	}
+	return stats, nil
 }
 
 // ensure interface compliance at compile time

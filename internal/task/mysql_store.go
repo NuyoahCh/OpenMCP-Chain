@@ -285,6 +285,11 @@ func (s *MySQLStore) List(ctx context.Context, opts ListOptions) ([]*Task, error
 	query := `SELECT id, goal, chain_action, address, metadata, status, attempts, max_retries, last_error, error_code,
         result_thought, result_reply, result_chain_id, result_block_number, result_observations, created_at, updated_at FROM task_states`
 
+	clause, filterArgs := buildFilterClause(opts)
+	if clause != "" {
+		query += " WHERE " + clause
+	}
+
 	conditions := make([]string, 0, 4)
 	args := make([]any, 0, 6)
 
@@ -326,6 +331,7 @@ func (s *MySQLStore) List(ctx context.Context, opts ListOptions) ([]*Task, error
 		order = " ORDER BY updated_at ASC"
 	}
 	query += order + " LIMIT ?"
+	args := append(filterArgs, opts.Limit)
 	args = append(args, opts.Limit)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -387,6 +393,49 @@ func (s *MySQLStore) Close() error {
 	return s.db.Close()
 }
 
+// Stats 返回符合过滤条件的任务聚合信息。
+func (s *MySQLStore) Stats(ctx context.Context, opts ListOptions) (TaskStats, error) {
+	opts.applyDefaults()
+
+	query := `SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS running,
+        SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS succeeded,
+        SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS failed,
+        COALESCE(MIN(updated_at), 0) AS oldest,
+        COALESCE(MAX(updated_at), 0) AS newest
+        FROM task_states`
+
+	clause, filterArgs := buildFilterClause(opts)
+	if clause != "" {
+		query += " WHERE " + clause
+	}
+
+	args := []any{string(StatusPending), string(StatusRunning), string(StatusSucceeded), string(StatusFailed)}
+	args = append(args, filterArgs...)
+
+	row := s.db.QueryRowContext(ctx, query, args...)
+
+	var stats TaskStats
+	if err := row.Scan(
+		&stats.Total,
+		&stats.Pending,
+		&stats.Running,
+		&stats.Succeeded,
+		&stats.Failed,
+		&stats.OldestUpdatedAt,
+		&stats.NewestUpdatedAt,
+	); err != nil {
+		return TaskStats{}, xerrors.Wrap(xerrors.CodeStorageFailure, err, "查询任务统计失败")
+	}
+	if stats.Total == 0 {
+		stats.OldestUpdatedAt = 0
+		stats.NewestUpdatedAt = 0
+	}
+	return stats, nil
+}
+
 func marshalMetadata(metadata map[string]any) (sql.NullString, error) {
 	if metadata == nil || len(metadata) == 0 {
 		return sql.NullString{}, nil
@@ -407,6 +456,42 @@ func unmarshalMetadata(raw sql.NullString) (map[string]any, error) {
 		return nil, err
 	}
 	return metadata, nil
+}
+
+func buildFilterClause(opts ListOptions) (string, []any) {
+	conditions := make([]string, 0, 4)
+	args := make([]any, 0, 6)
+
+	if len(opts.Statuses) > 0 {
+		placeholders := make([]string, 0, len(opts.Statuses))
+		for range opts.Statuses {
+			placeholders = append(placeholders, "?")
+		}
+		conditions = append(conditions, fmt.Sprintf("status IN (%s)", strings.Join(placeholders, ",")))
+		for _, status := range opts.Statuses {
+			args = append(args, status)
+		}
+	}
+	if opts.UpdatedGTE > 0 {
+		conditions = append(conditions, "updated_at >= ?")
+		args = append(args, opts.UpdatedGTE)
+	}
+	if opts.UpdatedLTE > 0 {
+		conditions = append(conditions, "updated_at <= ?")
+		args = append(args, opts.UpdatedLTE)
+	}
+	if opts.HasResult != nil {
+		if *opts.HasResult {
+			conditions = append(conditions, "(result_thought <> '' OR result_reply <> '' OR result_chain_id <> '' OR result_block_number <> '' OR result_observations <> '')")
+		} else {
+			conditions = append(conditions, "(result_thought = '' AND result_reply = '' AND result_chain_id = '' AND result_block_number = '' AND (result_observations IS NULL OR result_observations = ''))")
+		}
+	}
+
+	if len(conditions) == 0 {
+		return "", nil
+	}
+	return strings.Join(conditions, " AND "), args
 }
 
 var _ Store = (*MySQLStore)(nil)

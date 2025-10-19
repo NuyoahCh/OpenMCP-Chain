@@ -104,7 +104,11 @@ export default function TaskList({
         style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
       >
         <span>最新任务</span>
-        <span className="helper-text">自动同步最近 {tasks.length} 条记录</span>
+        <span className="helper-text">
+          {totalCount > tasks.length
+            ? `共 ${totalCount} 条记录，展示最近 ${tasks.length} 条`
+            : `自动同步最近 ${tasks.length} 条记录`}
+        </span>
       </div>
       <div className="list-toolbar">
         <label htmlFor="task-status-filter">状态筛选</label>

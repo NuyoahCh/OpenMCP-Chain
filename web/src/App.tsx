@@ -3,6 +3,7 @@ import {
   UnauthorizedError,
   createTask,
   fetchTask,
+  fetchTaskStats,
   listTasks,
   statusLabel,
   verifyApiConnection,
@@ -16,6 +17,10 @@ import AuthPanel from "./components/AuthPanel";
 import { useAuth, type AuthCredentials } from "./hooks/useAuth";
 import { useApiBaseUrl } from "./hooks/useApiBaseUrl";
 import { useNetworkStatus } from "./hooks/useNetworkStatus";
+import type { CreateTaskRequest, TaskItem, TaskStats } from "./types";
+
+const POLL_INTERVAL = 3500;
+const MAX_POLL_ATTEMPTS = 40;
 import type { CreateTaskRequest, TaskItem } from "./types";
 
 const POLL_INTERVAL = 3500;
@@ -56,6 +61,7 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [lastSynced, setLastSynced] = useState<number | null>(null);
+  const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<
     "idle" | "success" | "error"
   >("idle");
@@ -115,6 +121,21 @@ export default function App() {
         if (statusFilter !== "all") {
           query.status = statusFilter;
         }
+        const [listResult, statsResult] = await Promise.allSettled([
+          listTasks(query),
+          fetchTaskStats(),
+        ]);
+        if (listResult.status === "rejected") {
+          throw listResult.reason;
+        }
+        if (statsResult.status === "fulfilled") {
+          setTaskStats(statsResult.value);
+        } else if (statsResult.status === "rejected") {
+          console.warn("获取任务统计失败", statsResult.reason);
+        }
+        const normalized = [...listResult.value].sort(
+          (a, b) => b.updated_at - a.updated_at,
+        );
         const data = await listTasks(query);
         const normalized = [...data].sort(
           (a, b) => b.updated_at - a.updated_at,
@@ -344,6 +365,13 @@ export default function App() {
                   ? `最后在线时间：${offlineHint}`
                   : "恢复联网后会自动同步。"}
               </span>
+            </div>
+          ) : null}
+          <StatusSummary
+            tasks={tasks}
+            stats={taskStats}
+            loading={initialLoading && !taskStats}
+          />
               <span>{offlineHint ? `最后在线时间：${offlineHint}` : "恢复联网后会自动同步。"}</span>
             </div>
           ) : null}
@@ -406,6 +434,7 @@ export default function App() {
         </div>
         <TaskList
           tasks={filteredTasks}
+          totalCount={taskStats?.total ?? tasks.length}
           totalCount={tasks.length}
           onSelect={handleSelectTask}
           activeTaskId={activeTask?.id}

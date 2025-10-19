@@ -42,6 +42,28 @@ def fetch_history(endpoint: str, limit: int) -> None:
     response.raise_for_status()
     print(json.dumps(response.json(), indent=2, ensure_ascii=False))
 
+
+# 获取任务统计信息。
+def fetch_stats(
+    endpoint: str,
+    statuses: list[str],
+    since: str | None,
+    until: str | None,
+    has_result: str | None,
+) -> None:
+    params: Dict[str, Any] = {}
+    if statuses:
+        params["status"] = ",".join(statuses)
+    if since:
+        params["since"] = since
+    if until:
+        params["until"] = until
+    if has_result is not None:
+        params["has_result"] = has_result
+    response = requests.get(f"{endpoint}/stats", params=params, timeout=10)
+    response.raise_for_status()
+    print(json.dumps(response.json(), indent=2, ensure_ascii=False))
+
 # 解析命令行传入的元数据参数。
 def parse_metadata(pairs: list[str]) -> Dict[str, Any]:
     result: Dict[str, Any] = {}
@@ -55,7 +77,7 @@ def parse_metadata(pairs: list[str]) -> Dict[str, Any]:
 # 主函数，处理命令行参数并执行相应操作。
 def main() -> None:
     parser = argparse.ArgumentParser(description="OpenMCP-Chain REST API 示例客户端")
-    parser.add_argument("action", choices=["invoke", "history"], help="要执行的操作")
+    parser.add_argument("action", choices=["invoke", "history", "stats"], help="要执行的操作")
     parser.add_argument("--host", default="127.0.0.1", help="API 服务主机名")
     parser.add_argument("--port", type=int, default=8080, help="API 服务端口")
 
@@ -64,6 +86,26 @@ def main() -> None:
     parser.add_argument("--address", help="与链上操作相关的地址")
     parser.add_argument("--metadata", nargs="*", default=[], help="附加元数据，使用 key=value 格式")
     parser.add_argument("--limit", type=int, default=10, help="history 模式下返回的任务数量")
+    parser.add_argument(
+        "--status",
+        action="append",
+        default=[],
+        help="任务状态过滤，仅在 stats 模式下生效，可重复传入",
+    )
+    parser.add_argument(
+        "--since",
+        help="筛选最近更新时间不早于该 RFC3339 时间，仅在 stats 模式下生效",
+    )
+    parser.add_argument(
+        "--until",
+        help="筛选最近更新时间不晚于该 RFC3339 时间，仅在 stats 模式下生效",
+    )
+    parser.add_argument(
+        "--has-result",
+        dest="has_result",
+        choices=["true", "false"],
+        help="是否仅统计已有执行结果的任务，仅在 stats 模式下生效",
+    )
 
     args = parser.parse_args()
     endpoint = _build_client(args.host, args.port)
@@ -76,6 +118,15 @@ def main() -> None:
             invoke_task(endpoint, args.goal, args.chain_action, args.address, metadata)
         elif args.action == "history":
             fetch_history(endpoint, args.limit)
+        elif args.action == "stats":
+            normalized_statuses: list[str] = []
+            for value in args.status:
+                for token in value.split(","):
+                    token = token.strip()
+                    if token:
+                        normalized_statuses.append(token)
+            has_result = args.has_result
+            fetch_stats(endpoint, normalized_statuses, args.since, args.until, has_result)
         else:
             parser.error(f"未知操作: {args.action}")
     except requests.HTTPError as exc:  # pragma: no cover - 示例脚本仅做演示

@@ -101,6 +101,34 @@ curl "http://127.0.0.1:8080/api/v1/tasks?limit=5&status=succeeded&has_result=tru
 
 响应中的字段与任务实体保持一致，便于在调试工具或审计平台中直接复用。若需要查询单条记录，可使用 `GET /api/v1/tasks?id=<task_id>`。
 
+## 任务统计概览 `GET /api/v1/tasks/stats`
+
+返回符合过滤条件的任务数量与状态分布，便于在仪表盘中展示总览信息或构建健康检查。支持的查询参数与 `GET /api/v1/tasks` 相同（除 `limit` 外），例如：
+
+```bash
+curl "http://127.0.0.1:8080/api/v1/tasks/stats?since=2024-05-01T00:00:00Z&has_result=true"
+```
+
+典型响应：
+
+```json
+{
+  "total": 42,
+  "pending": 3,
+  "running": 1,
+  "succeeded": 35,
+  "failed": 3,
+  "oldest_updated_at": 1714561200,
+  "newest_updated_at": 1714564888
+}
+```
+
+- `total`：匹配过滤条件的任务总数。
+- `pending`/`running`/`succeeded`/`failed`：各状态对应的数量。
+- `oldest_updated_at` / `newest_updated_at`：匹配任务的最早、最新更新时间（UNIX 秒），用于评估数据新鲜度。
+
+> 若某个字段没有匹配记录，则对应计数为 0；当总数为 0 时，时间字段会返回 0。
+
 ## 审计与追踪建议
 
 - 将响应中的 `task_id` 作为主索引，关联日志、数据库记录以及外部分析平台。

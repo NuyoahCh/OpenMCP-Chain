@@ -14,5 +14,6 @@ type Store interface {
         MarkSucceeded(ctx context.Context, id string, result ExecutionResult) error
         MarkFailed(ctx context.Context, id string, code xerrors.Code, lastError string, terminal bool) error
         List(ctx context.Context, opts ListOptions) ([]*Task, error)
+        Stats(ctx context.Context, opts ListOptions) (TaskStats, error)
         Close() error
 }

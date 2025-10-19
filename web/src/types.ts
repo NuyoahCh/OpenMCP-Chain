@@ -52,3 +52,13 @@ export interface AuthTokenResponse {
   token_type?: string;
   scope?: string | string[];
 }
+
+export interface TaskStats {
+  total: number;
+  pending: number;
+  running: number;
+  succeeded: number;
+  failed: number;
+  oldest_updated_at?: number | null;
+  newest_updated_at?: number | null;
+}
