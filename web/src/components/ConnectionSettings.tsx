@@ -38,7 +38,6 @@ export default function ConnectionSettings({
   fetchError,
   isOnline,
   connectionType
-  fetchError
 }: ConnectionSettingsProps) {
   const [value, setValue] = useState(baseUrl);
   const [saving, setSaving] = useState(false);
@@ -83,6 +82,10 @@ export default function ConnectionSettings({
 
   const syncStateLabel =
     status === "success" ? "连接成功" : status === "error" ? "连接异常" : "等待检测";
+
+  const networkLabel = isOnline
+    ? `在线${connectionType ? ` · ${connectionType}` : ""}`
+    : "离线";
 
   return (
     <div className="card settings-card">
@@ -140,7 +143,7 @@ export default function ConnectionSettings({
           <strong>最近同步:</strong> {formatSyncTime(lastSynced)}
         </span>
         <span>
-          <strong>网络:</strong> {isOnline ? `在线${connectionType ? ` · ${connectionType}` : ""}` : "离线"}
+          <strong>网络:</strong> {networkLabel}
         </span>
         <button type="button" className="link" onClick={onRefresh} disabled={refreshing}>
           {refreshing ? "同步中..." : "立即刷新"}

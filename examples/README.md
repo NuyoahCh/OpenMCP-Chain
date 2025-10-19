@@ -17,8 +17,14 @@ python examples/task_quickstart.py invoke \
 
 # 获取最近的 5 条历史记录
 python examples/task_quickstart.py history --limit 5
+
+# 按关键字筛选历史记录
+python examples/task_quickstart.py history --limit 20 --query balance
+
+# 翻页查看更早的历史记录
+python examples/task_quickstart.py history --limit 20 --offset 20
 ```
 
-> 提示：`--metadata key=value` 可在任务中附加自定义信息，例如 `--metadata project=demo owner=alice`。
+> 提示：`history` 模式的响应包含 `tasks`、`total`、`has_more` 与 `next_offset` 字段，便于继续翻页。`--metadata key=value` 可在任务中附加自定义信息，例如 `--metadata project=demo owner=alice`。
 
 欢迎在此目录新增更多示例（如 Jupyter Notebook、Go/TypeScript SDK 样例），并在 README 中进行登记。
