@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { formatTimestamp, statusLabel } from "../api";
 import type { TaskItem } from "../types";
 
@@ -8,36 +8,31 @@ interface TaskDetailsProps {
 }
 
 export default function TaskDetails({ task, isPolling }: TaskDetailsProps) {
-  const [copied, setCopied] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
   const [copiedPayload, setCopiedPayload] = useState(false);
-  const canCopy = typeof navigator !== "undefined" && Boolean(navigator.clipboard?.writeText);
+  const canCopy = useMemo(
+    () => typeof navigator !== "undefined" && Boolean(navigator.clipboard?.writeText),
+    []
+  );
 
-  const handleCopy = useCallback(async () => {
+  const handleCopyId = useCallback(async () => {
+    if (!canCopy || !navigator?.clipboard?.writeText) {
+      return;
+    }
     try {
-      if (!canCopy || !navigator?.clipboard?.writeText) {
-
-  const handleCopy = useCallback(async () => {
-    try {
-      if (!navigator?.clipboard?.writeText) {
-        throw new Error("浏览器暂不支持剪贴板写入");
-      }
       await navigator.clipboard.writeText(task.id);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      setCopiedId(true);
+      setTimeout(() => setCopiedId(false), 1500);
     } catch (error) {
       console.warn("复制任务 ID 失败", error);
     }
   }, [canCopy, task.id]);
-  }, [task.id]);
-
-  const blockNumber = task.result?.block_number ?? "-";
-  const chainId = task.result?.chain_id ?? "-";
 
   const handleCopyPayload = useCallback(async () => {
+    if (!canCopy || !navigator?.clipboard?.writeText) {
+      return;
+    }
     try {
-      if (!canCopy || !navigator?.clipboard?.writeText) {
-        throw new Error("浏览器暂不支持剪贴板写入");
-      }
       await navigator.clipboard.writeText(JSON.stringify(task, null, 2));
       setCopiedPayload(true);
       setTimeout(() => setCopiedPayload(false), 1500);
@@ -45,6 +40,9 @@ export default function TaskDetails({ task, isPolling }: TaskDetailsProps) {
       console.warn("复制任务详情失败", error);
     }
   }, [canCopy, task]);
+
+  const blockNumber = task.result?.block_number ?? "-";
+  const chainId = task.result?.chain_id ?? "-";
 
   return (
     <div className="card" style={{ marginTop: "2rem" }}>
@@ -61,15 +59,15 @@ export default function TaskDetails({ task, isPolling }: TaskDetailsProps) {
         <span>
           <strong>ID:</strong> {task.id}
         </span>
-        <button type="button" className="link" onClick={handleCopy} disabled={!canCopy}>
-          {copied ? "已复制" : "复制 ID"}
+        <button type="button" className="link" onClick={handleCopyId} disabled={!canCopy}>
+          {copiedId ? "已复制" : "复制 ID"}
         </button>
         <button type="button" className="link" onClick={handleCopyPayload} disabled={!canCopy}>
           {copiedPayload ? "JSON 已复制" : "复制详情 JSON"}
         </button>
-        <button type="button" className="link" onClick={handleCopy}>
-          {copied ? "已复制" : "复制 ID"}
-        </button>
+      </div>
+
+      <div className="meta-row" style={{ marginBottom: "1rem" }}>
         <span>
           <strong>状态:</strong> {statusLabel(task.status)}
         </span>
@@ -89,6 +87,13 @@ export default function TaskDetails({ task, isPolling }: TaskDetailsProps) {
           <strong>创建时间:</strong> {formatTimestamp(task.created_at)}
         </span>
       </div>
+
+      {task.metadata ? (
+        <div className="result-panel" style={{ marginBottom: "1rem" }}>
+          <h3 style={{ marginTop: 0 }}>Metadata</h3>
+          <pre>{JSON.stringify(task.metadata, null, 2)}</pre>
+        </div>
+      ) : null}
 
       {task.result ? (
         <div className="result-panel">

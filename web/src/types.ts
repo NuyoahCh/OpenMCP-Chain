@@ -6,11 +6,6 @@ export interface ExecutionResult {
   chain_id?: string | null;
   block_number?: string | number | null;
   observations?: string | null;
-  thought: string;
-  reply: string;
-  chain_id: string;
-  block_number: string;
-  observations: string;
 }
 
 export interface TaskItem {
@@ -23,14 +18,8 @@ export interface TaskItem {
   max_retries: number;
   last_error?: string | null;
   error_code?: string | null;
-  chain_action: string;
-  address: string;
-  status: TaskStatus;
-  attempts: number;
-  max_retries: number;
-  last_error?: string;
-  error_code?: string;
   result?: ExecutionResult | null;
+  metadata?: Record<string, unknown> | null;
   created_at: number;
   updated_at: number;
 }
@@ -47,6 +36,12 @@ export interface CreateTaskResponse {
   status: TaskStatus;
   attempts: number;
   max_retries: number;
+  goal?: string;
+  chain_action?: string | null;
+  address?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at: number;
+  updated_at: number;
 }
 
 export interface AuthTokenResponse {
@@ -56,4 +51,14 @@ export interface AuthTokenResponse {
   refresh_expires_in?: number;
   token_type?: string;
   scope?: string | string[];
+}
+
+export interface TaskStats {
+  total: number;
+  pending: number;
+  running: number;
+  succeeded: number;
+  failed: number;
+  oldest_updated_at?: number | null;
+  newest_updated_at?: number | null;
 }

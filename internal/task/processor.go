@@ -110,6 +110,7 @@ func (p *Processor) handle(ctx context.Context, taskID string) error {
 		Goal:        task.Goal,
 		ChainAction: task.ChainAction,
 		Address:     task.Address,
+		Metadata:    cloneMetadata(task.Metadata),
 	})
 	if execErr != nil {
 		return p.handleExecutionFailure(ctx, task, execErr)

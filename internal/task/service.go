@@ -56,6 +56,7 @@ func (s *Service) Submit(ctx context.Context, req agent.TaskRequest) (*Task, err
 		Goal:        req.Goal,
 		ChainAction: req.ChainAction,
 		Address:     req.Address,
+		Metadata:    cloneMetadata(req.Metadata),
 		Status:      StatusPending,
 		Attempts:    0,
 		MaxRetries:  s.maxRetries,
@@ -95,12 +96,22 @@ func (s *Service) Get(ctx context.Context, id string) (*Task, error) {
 	return s.store.Get(ctx, id)
 }
 
-// List 返回最近的任务列表。
-func (s *Service) List(ctx context.Context, limit int) ([]*Task, error) {
+// List 返回符合过滤条件的任务列表。
+func (s *Service) List(ctx context.Context, opts ...ListOption) ([]*Task, error) {
 	if s.store == nil {
 		return nil, xerrors.New(xerrors.CodeInitializationFailure, "任务存储未初始化")
 	}
-	return s.store.List(ctx, limit)
+	options := buildListOptions(opts)
+	return s.store.List(ctx, options)
+}
+
+// Stats 返回符合过滤条件的任务统计信息。
+func (s *Service) Stats(ctx context.Context, opts ...ListOption) (TaskStats, error) {
+	if s.store == nil {
+		return TaskStats{}, xerrors.New(xerrors.CodeInitializationFailure, "任务存储未初始化")
+	}
+	options := buildListOptions(opts)
+	return s.store.Stats(ctx, options)
 }
 
 // Close 释放资源。
