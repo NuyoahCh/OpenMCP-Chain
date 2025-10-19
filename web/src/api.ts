@@ -5,6 +5,7 @@ import type {
   TaskItem,
   TaskStatus,
   TaskStats,
+  TaskListResponse,
   TaskStatus
 } from "./types";
 
@@ -275,6 +276,99 @@ export async function createTask(
   payload: CreateTaskRequest,
 ): Promise<CreateTaskResponse> {
   return request<CreateTaskResponse>("/api/v1/tasks", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface TaskListQuery {
+  limit?: number;
+  offset?: number;
+  status?: TaskStatus | TaskStatus[];
+  since?: string | Date;
+  until?: string | Date;
+  hasResult?: boolean;
+  order?: "asc" | "desc";
+  search?: string;
+}
+
+export type TaskStatsQuery = Omit<TaskListQuery, "limit" | "order" | "offset">;
+
+function toRFC3339(input: string | Date | undefined): string | undefined {
+  if (!input) {
+    return undefined;
+  }
+  if (typeof input === "string") {
+    return input;
+  }
+  return input.toISOString();
+}
+
+function buildTaskQueryParams(
+  query: TaskListQuery = {},
+  options: {
+    includeLimit?: boolean;
+    includeOrder?: boolean;
+    includeOffset?: boolean;
+  } = {},
+): URLSearchParams {
+  const search = new URLSearchParams();
+  const { includeLimit = true, includeOrder = true, includeOffset = true } = options;
+  if (includeLimit && query.limit) {
+    search.set("limit", String(query.limit));
+  }
+  if (includeOffset && typeof query.offset === "number" && query.offset > 0) {
+    search.set("offset", String(query.offset));
+  }
+  if (query.status) {
+    const values = Array.isArray(query.status) ? query.status : [query.status];
+    if (values.length > 0) {
+      search.set("status", values.join(","));
+    }
+  }
+  const since = toRFC3339(query.since);
+  if (since) {
+    search.set("since", since);
+  }
+  const until = toRFC3339(query.until);
+  if (until) {
+    search.set("until", until);
+  }
+  if (typeof query.hasResult === "boolean") {
+    search.set("has_result", String(query.hasResult));
+  }
+  if (query.search) {
+    const keyword = query.search.toString().trim();
+    if (keyword) {
+      search.set("q", keyword);
+    }
+  }
+  if (includeOrder && query.order) {
+    search.set("order", query.order);
+  }
+  return search;
+}
+
+export async function listTasks(
+  query: TaskListQuery = {},
+): Promise<TaskListResponse> {
+  const search = buildTaskQueryParams(query);
+  const suffix = search.toString();
+  const url = suffix ? `/api/v1/tasks?${suffix}` : "/api/v1/tasks";
+  return request<TaskListResponse>(url);
+}
+
+export async function fetchTaskStats(
+  query: TaskStatsQuery = {},
+): Promise<TaskStats> {
+  const search = buildTaskQueryParams(query, {
+    includeLimit: false,
+    includeOrder: false,
+    includeOffset: false,
+  });
+  const suffix = search.toString();
+  const url = suffix ? `/api/v1/tasks/stats?${suffix}` : "/api/v1/tasks/stats";
+  return request<TaskStats>(url);
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -706,6 +800,10 @@ export async function fetchTask(id: string): Promise<TaskItem> {
 }
 
 export async function verifyApiConnection(): Promise<void> {
+  const result = await listTasks({ limit: 1 });
+  if (!Array.isArray(result.tasks)) {
+    throw new Error("任务列表响应格式异常");
+  }
   await listTasks({ limit: 1 });
   await request<TaskItem[]>("/api/v1/tasks?limit=1", { timeout: 10_000 });
 }
@@ -732,6 +830,33 @@ export function statusClassName(status: TaskStatus): string {
 export function formatTimestamp(timestamp: number | null | undefined): string {
   if (!timestamp) {
     return "-";
+  }
+  const date = new Date(timestamp * 1000);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+}
+
+export function getAuthState(): AuthState | null {
+  return authState;
+}
+
+export function clearAuth() {
+  setAuthState(null);
+}
+
+export function subscribeAuth(listener: AuthListener) {
+  authListeners.add(listener);
+  return () => {
+    authListeners.delete(listener);
+  };
+}
+
+export function isAuthExpired(state: AuthState | null | undefined): boolean {
+  if (!state?.expiresAt) {
+    return false;
+  }
   }
   const date = new Date(timestamp * 1000);
   if (Number.isNaN(date.getTime())) {

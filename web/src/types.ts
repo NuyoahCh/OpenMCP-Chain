@@ -24,6 +24,13 @@ export interface TaskItem {
   updated_at: number;
 }
 
+export interface TaskListResponse {
+  tasks: TaskItem[];
+  total: number;
+  has_more: boolean;
+  next_offset?: number | null;
+}
+
 export interface CreateTaskRequest {
   goal: string;
   chain_action?: string;

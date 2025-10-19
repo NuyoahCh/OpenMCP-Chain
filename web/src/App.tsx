@@ -62,6 +62,9 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasLoadedMore, setHasLoadedMore] = useState(false);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [listTotal, setListTotal] = useState<number | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [lastSynced, setLastSynced] = useState<number | null>(null);
   const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
@@ -90,6 +93,9 @@ export default function App() {
   useEffect(() => {
     setHasLoadedMore(false);
     setLoadingMore(false);
+    setNextOffset(null);
+    setHasMore(false);
+    setListTotal(null);
   }, [appliedSearch, statusFilter]);
 
   const filteredTasks = useMemo(() => {
@@ -212,6 +218,27 @@ export default function App() {
         } else if (statsResult.status === "rejected") {
           console.warn("获取任务统计失败", statsResult.reason);
         }
+        const page = listResult.value;
+        const {
+          tasks: pageTasks,
+          has_more: pageHasMore,
+          next_offset: pageNextOffset,
+          total: pageTotal,
+        } = page;
+        const normalized = [...pageTasks].sort(
+          (a, b) => b.updated_at - a.updated_at,
+        );
+        setListTotal(
+          typeof pageTotal === "number" ? pageTotal : normalized.length,
+        );
+        setHasMore(Boolean(pageHasMore));
+        const computedNextOffset =
+          typeof pageNextOffset === "number"
+            ? pageNextOffset
+            : pageHasMore
+            ? normalized.length
+            : null;
+        setNextOffset(computedNextOffset);
         const normalized = [...listResult.value].sort(
           (a, b) => b.updated_at - a.updated_at,
         );
@@ -286,11 +313,18 @@ export default function App() {
     if (loadingMore) {
       return;
     }
+    if (!hasMore || nextOffset === null || nextOffset === undefined) {
+      showToast({ title: "没有更多", message: "已到达任务列表末尾" });
+      return;
+    }
     setLoadingMore(true);
     try {
       const query: Parameters<typeof listTasks>[0] = {
         limit: DEFAULT_PAGE_SIZE,
         order: "desc",
+        offset: nextOffset,
+      };
+      const pageLimit = query.limit ?? DEFAULT_PAGE_SIZE;
         offset: tasks.length,
       };
       if (statusFilter !== "all") {
@@ -300,17 +334,44 @@ export default function App() {
         query.search = appliedSearch;
       }
       const more = await listTasks(query);
+      const {
+        tasks: moreTasks,
+        has_more: moreHasMore,
+        next_offset: moreNextOffset,
+        total: moreTotal,
+      } = more;
+      if (moreTasks.length === 0) {
+        setHasMore(Boolean(moreHasMore));
+        setNextOffset(
+          typeof moreNextOffset === "number"
+            ? moreNextOffset
+            : moreHasMore
+            ? nextOffset + pageLimit
+            : null,
+        );
       if (more.length === 0) {
         showToast({ title: "没有更多", message: "已到达任务列表末尾" });
         return;
       }
       setTasks((prev) => {
         let combined = [...prev];
+        for (const item of moreTasks) {
         for (const item of more) {
           combined = mergeTasks(combined, item);
         }
         return combined;
       });
+      setListTotal((prev) =>
+        typeof moreTotal === "number" ? moreTotal : prev,
+      );
+      setHasMore(Boolean(moreHasMore));
+      setNextOffset(
+        typeof moreNextOffset === "number"
+          ? moreNextOffset
+          : moreHasMore
+          ? nextOffset + moreTasks.length
+          : null,
+      );
       setHasLoadedMore(true);
     } catch (error) {
       const message =
@@ -324,6 +385,14 @@ export default function App() {
     }
   }, [
     appliedSearch,
+    hasMore,
+    isOnline,
+    loadingMore,
+    nextOffset,
+    showToast,
+    statusFilter,
+  ]);
+
     isOnline,
     loadingMore,
     showToast,
@@ -417,6 +486,10 @@ export default function App() {
     }
     const blob = new Blob([JSON.stringify(filteredTasks, null, 2)], {
       type: "application/json;charset=utf-8",
+      return;
+    }
+    const blob = new Blob([JSON.stringify(filteredTasks, null, 2)], {
+      type: "application/json;charset=utf-8",
     if (!tasks.length) {
       return;
     }
@@ -502,6 +575,8 @@ export default function App() {
     return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
   }, [lastChanged]);
 
+  const totalCount = taskStats?.total ?? listTotal ?? tasks.length;
+  const canLoadMore = hasMore;
   const totalCount = taskStats?.total ?? tasks.length;
   const canLoadMore = taskStats
     ? totalCount > tasks.length

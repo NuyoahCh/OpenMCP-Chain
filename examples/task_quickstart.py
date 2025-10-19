@@ -51,6 +51,15 @@ def fetch_history(endpoint: str, limit: int, query: str | None = None) -> None:
             params["q"] = keyword
     response = requests.get(endpoint, params=params, timeout=10)
     response.raise_for_status()
+    payload = response.json()
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+    if isinstance(payload, dict) and payload.get("has_more"):
+        next_offset = payload.get("next_offset")
+        if isinstance(next_offset, int):
+            print(
+                f"\n提示：还有更多记录，可继续使用 --offset {next_offset} 翻页。",
+                flush=True,
+            )
     print(json.dumps(response.json(), indent=2, ensure_ascii=False))
 
 

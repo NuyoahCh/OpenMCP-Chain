@@ -140,6 +140,9 @@ func (m *MemoryStore) List(_ context.Context, opts ListOptions) ([]*Task, error)
 	results := make([]*Task, 0, len(m.tasks))
 	for _, task := range m.tasks {
 		if !matchesListFilters(task, opts) {
+	results := make([]*Task, 0, len(m.tasks))
+	for _, task := range m.tasks {
+		if !matchesListFilters(task, opts) {
 	matchesStatus := func(task *Task) bool {
 		if len(opts.Statuses) == 0 {
 			return true
@@ -200,6 +203,11 @@ func (m *MemoryStore) List(_ context.Context, opts ListOptions) ([]*Task, error)
 
 	if opts.Offset >= len(results) {
 		return []*Task{}, nil
+	}
+	end := len(results)
+	if opts.Limit > 0 && opts.Offset+opts.Limit < end {
+		end = opts.Offset + opts.Limit
+	}
 	if len(results) > opts.Limit {
 		results = results[:opts.Limit]
 	}

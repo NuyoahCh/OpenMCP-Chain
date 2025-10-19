@@ -292,6 +292,8 @@ func (s *MySQLStore) List(ctx context.Context, opts ListOptions) ([]*Task, error
 
 	}
 
+	}
+
 
 	conditions := make([]string, 0, 4)
 	args := make([]any, 0, 6)

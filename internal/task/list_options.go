@@ -16,6 +16,13 @@ const (
 	SortByUpdatedAsc
 )
 
+const (
+	// DefaultListLimit controls the default number of tasks returned by list queries.
+	DefaultListLimit = 20
+	// MaxListLimit is the hard upper bound enforced on list queries to protect stores.
+	MaxListLimit = 100
+)
+
 // ListOptions controls how tasks are selected when querying the store.
 type ListOptions struct {
 	Limit      int
@@ -31,6 +38,10 @@ type ListOptions struct {
 // applyDefaults sanitizes the options and fills in default values.
 func (opts *ListOptions) applyDefaults() {
 	if opts.Limit <= 0 {
+		opts.Limit = DefaultListLimit
+	}
+	if opts.Limit > MaxListLimit {
+		opts.Limit = MaxListLimit
 		opts.Limit = 20
 	}
 	if opts.Limit > 100 {

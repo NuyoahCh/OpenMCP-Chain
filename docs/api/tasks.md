@@ -64,6 +64,7 @@ curl -X POST http://127.0.0.1:8080/api/v1/tasks \
 
 | 查询参数 | 描述 |
 | --- | --- |
+| `limit` | 可选，限制返回条数，范围 1–100，未指定时默认 20。 |
 | `limit` | 可选，限制返回条数，范围 1–100。 |
 | `offset` | 可选，跳过前 N 条匹配记录，可用于翻页加载历史任务。 |
 | `status` | 可选，过滤指定状态，可多次传入或使用逗号分隔，例如 `status=pending,failed`。 |
@@ -74,6 +75,55 @@ curl -X POST http://127.0.0.1:8080/api/v1/tasks \
 
 > 例如 `?q=balance` 可快速定位目标或回复中包含 `balance` 关键字的任务。
 
+> 结合 `offset` 可以实现滚动翻页，例如 `?limit=20&offset=20` 将返回第二页任务列表。接口会在响应中返回 `next_offset`，便于直接请求下一页。
+
+```bash
+curl "http://127.0.0.1:8080/api/v1/tasks?limit=5&status=succeeded&has_result=true"
+```
+
+典型响应：
+
+```json
+{
+  "tasks": [
+    {
+      "id": "20240501-0001",
+      "goal": "查询账户余额",
+      "chain_action": "eth_getBalance",
+      "address": "0x0000000000000000000000000000000000000000",
+      "status": "succeeded",
+      "attempts": 1,
+      "max_retries": 3,
+      "result": {
+        "thought": "当前目标: 查询账户余额",
+        "reply": "该地址余额为 ...",
+        "chain_id": "0x1",
+        "block_number": "0xabcdef",
+        "observations": "eth_getBalance 返回: 0x0234c8a3397aab58"
+      },
+      "created_at": 1714564800,
+      "updated_at": 1714564820
+    }
+  ],
+  "total": 42,
+  "has_more": true,
+  "next_offset": 20
+}
+```
+
+其中：
+
+- `tasks`：匹配过滤条件的任务数组，字段与任务实体保持一致。若需要查询单条记录，可使用 `GET /api/v1/tasks?id=<task_id>`。
+- `total`：符合当前过滤条件的任务总数。
+- `has_more`：是否仍有更多历史记录可加载。
+- `next_offset`：当 `has_more=true` 时给出下一页的 `offset` 建议值；若无更多数据则省略。
+
+## 任务统计概览 `GET /api/v1/tasks/stats`
+
+返回符合过滤条件的任务数量与状态分布，便于在仪表盘中展示总览信息或构建健康检查。支持的查询参数与 `GET /api/v1/tasks` 相同（除 `limit` 外），包括模糊搜索 `q` 参数，例如：
+
+```bash
+curl "http://127.0.0.1:8080/api/v1/tasks/stats?since=2024-05-01T00:00:00Z&has_result=true"
 > 结合 `offset` 可以实现滚动翻页，例如 `?limit=20&offset=20` 将返回第二页任务列表。
 
 ```bash
@@ -83,6 +133,17 @@ curl "http://127.0.0.1:8080/api/v1/tasks?limit=5&status=succeeded&has_result=tru
 典型响应：
 
 ```json
+{
+  "total": 42,
+  "pending": 3,
+  "running": 1,
+  "succeeded": 35,
+  "failed": 3,
+  "oldest_updated_at": 1714561200,
+  "newest_updated_at": 1714564888
+}
+```
+
 [
   {
     "id": "20240501-0001",
