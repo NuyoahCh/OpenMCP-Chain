@@ -59,19 +59,25 @@ func WithAuthService(authn *auth.Service) Option {
 func (s *Server) Start(ctx context.Context) error {
 	// 设置路由和中间件。
 	mux := http.NewServeMux()
-	taskHandler := http.HandlerFunc(s.handleTasks)
+	var taskHandler http.Handler = http.HandlerFunc(s.handleTasks)
+	var taskDetailHandler http.Handler = http.HandlerFunc(s.handleTaskDetail)
 	// 应用身份认证中间件（如果配置了认证服务）。
 	if s.auth != nil && s.auth.Mode() != auth.ModeDisabled {
-		taskHandler = s.auth.Middleware(auth.MiddlewareConfig{
+		cfg := auth.MiddlewareConfig{
 			RequiredPermissions: map[string][]string{
 				http.MethodGet:  {"tasks.read"},
 				http.MethodPost: {"tasks.write"},
 			},
 			AuditEvent: "tasks",
-		})(taskHandler).(http.HandlerFunc)
+		}
+		taskHandler = s.auth.Middleware(cfg)(taskHandler)
+		detailCfg := cfg
+		detailCfg.AuditEvent = "task_detail"
+		taskDetailHandler = s.auth.Middleware(detailCfg)(taskDetailHandler)
 	}
 	// 应用请求日志中间件。
 	mux.Handle("/api/v1/tasks", s.instrument("tasks", taskHandler))
+	mux.Handle("/api/v1/tasks/", s.instrument("task_detail", taskDetailHandler))
 	mux.Handle("/api/v1/tasks/stats", s.instrument("task_stats", http.HandlerFunc(s.handleTaskStats)))
 	mux.Handle("/api/v1/auth/token", s.instrument("auth_token", http.HandlerFunc(s.handleAuthToken)))
 	// 如果启用指标采集，注册指标处理器。
@@ -117,6 +123,51 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "仅支持 GET/POST")
 	}
+}
+
+// handleTaskDetail 处理单个任务查询请求。
+func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "仅支持 GET")
+		return
+	}
+	if s.tasks == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, string(xerrors.CodeInitializationFailure), "任务服务未初始化")
+		return
+	}
+
+	id := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/api/v1/tasks/"))
+	id = strings.Trim(id, "/")
+	if id == "" {
+		// 与历史行为保持一致：当路径以 `/api/v1/tasks/` 结尾时，回退到列表处理逻辑，
+		// 使得包含查询参数的请求（如 `/api/v1/tasks/?status=...`）仍然生效。
+		s.handleListTasks(w, r)
+		return
+	}
+	if strings.Contains(id, "/") {
+		writeJSONError(w, http.StatusNotFound, string(task.CodeTaskNotFound), "任务不存在")
+		return
+	}
+
+	ctx := r.Context()
+	taskItem, err := s.tasks.Get(ctx, id)
+	if err != nil {
+		if task.IsTaskError(err, task.CodeTaskNotFound) || xerrors.CodeOf(err) == xerrors.CodeNotFound {
+			writeJSONError(w, http.StatusNotFound, string(task.CodeTaskNotFound), "任务不存在")
+			return
+		}
+		logger.L().Error("查询任务失败", slog.Any("error", err), slog.String("task_id", id))
+		status := statusFromError(err)
+		code := string(xerrors.CodeOf(err))
+		if code == "" {
+			code = "TASK_QUERY_FAILED"
+		}
+		writeJSONError(w, status, code, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(taskItem)
 }
 
 // instrument 包装 HTTP 处理器以收集请求指标。
