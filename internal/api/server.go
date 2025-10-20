@@ -142,6 +142,7 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 		// 与历史行为保持一致：当路径以 `/api/v1/tasks/` 结尾时，回退到列表处理逻辑，
 		// 使得包含查询参数的请求（如 `/api/v1/tasks/?status=...`）仍然生效。
 		s.handleListTasks(w, r)
+		writeJSONError(w, http.StatusBadRequest, "INVALID_TASK_ID", "任务 ID 不能为空")
 		return
 	}
 	if strings.Contains(id, "/") {
