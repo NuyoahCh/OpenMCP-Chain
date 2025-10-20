@@ -67,6 +67,17 @@ func TestHandleTaskDetailErrors(t *testing.T) {
 		}
 	})
 
+	t.Run("missing id", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/tasks/", nil)
+		rec := httptest.NewRecorder()
+
+		server.handleTaskDetail(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+		}
+	})
+
 	t.Run("not found", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/tasks/missing", nil)
 		rec := httptest.NewRecorder()
