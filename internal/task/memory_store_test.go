@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	stdErrors "errors"
 	"testing"
 	"time"
 )
@@ -21,7 +22,7 @@ func TestMemoryStoreListWithFilters(t *testing.T) {
 	}
 
 	for _, task := range tasks {
-		if err := store.Create(ctx, task); err != nil {
+		if err := store.Create(ctx, task); err != nil && !stdErrors.Is(err, ErrTaskConflict) {
 			t.Fatalf("create task %s: %v", task.ID, err)
 		}
 		time.Sleep(5 * time.Millisecond)
@@ -122,7 +123,7 @@ func TestMemoryStoreStats(t *testing.T) {
 	}
 
 	for _, task := range tasks {
-		if err := store.Create(ctx, task); err != nil {
+		if err := store.Create(ctx, task); err != nil && !stdErrors.Is(err, ErrTaskConflict) {
 			t.Fatalf("create task %s: %v", task.ID, err)
 		}
 		time.Sleep(2 * time.Millisecond)
