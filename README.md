@@ -76,7 +76,7 @@ python examples/task_quickstart.py history --limit 5
 | --- | --- | --- |
 | `POST` | `/api/v1/tasks` | 提交一次智能体任务，返回推理输出、链上快照与审计信息。 |
 | `GET` | `/api/v1/tasks` | 查询最近的任务执行记录，支持分页与过滤，并返回 `total`/`next_offset` 元数据。 |
-| `GET` | `/api/v1/tasks` | 查询最近的任务执行记录，支持 `limit` 参数。 |
+| `GET` | `/api/v1/tasks/{id}` | 查询指定任务的详细执行记录。 |
 | `GET` | `/api/v1/tasks/stats` | 汇总任务数量、状态分布与最近更新时间。 |
 
 ## 示例脚本
