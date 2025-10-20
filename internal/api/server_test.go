@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"OpenMCP-Chain/internal/task"
@@ -123,3 +124,41 @@ func TestHandleTaskDetailTrailingSlashFallsBackToList(t *testing.T) {
 		t.Fatalf("expected at least one task in response")
 	}
 }
+
+func TestHandleTaskDetailTrailingSlashPostDelegatesToCreate(t *testing.T) {
+	store := task.NewMemoryStore()
+	producer := &stubProducer{}
+	svc := task.NewService(store, producer, 3)
+	server := NewServer(":0", svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/", strings.NewReader(`{"goal":"demo"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.handleTaskDetail(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("unexpected status code: got %d want %d", rec.Code, http.StatusAccepted)
+	}
+	if len(producer.published) != 1 {
+		t.Fatalf("expected one published task, got %d", len(producer.published))
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["task_id"] == "" {
+		t.Fatalf("expected task id in response, got %#v", resp)
+	}
+}
+
+type stubProducer struct {
+	published []string
+}
+
+func (s *stubProducer) Publish(_ context.Context, taskID string) error {
+	s.published = append(s.published, taskID)
+	return nil
+}
+
+func (s *stubProducer) Close() error { return nil }

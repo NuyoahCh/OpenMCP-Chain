@@ -127,6 +127,15 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {
 
 // handleTaskDetail 处理单个任务查询请求。
 func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/api/v1/tasks/"))
+	id = strings.Trim(id, "/")
+	if id == "" {
+		// 与历史行为保持一致：当路径以 `/api/v1/tasks/` 结尾时，回退到原有任务处理逻辑，
+		// 使得包含查询参数的请求（如 `/api/v1/tasks/?status=...`）和创建请求都能继续使用。
+		s.handleTasks(w, r)
+		return
+	}
+
 	if r.Method != http.MethodGet {
 		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "仅支持 GET")
 		return
