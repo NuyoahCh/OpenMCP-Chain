@@ -88,3 +88,38 @@ func TestHandleTaskDetailErrors(t *testing.T) {
 		}
 	})
 }
+
+func TestHandleTaskDetailTrailingSlashFallsBackToList(t *testing.T) {
+	store := task.NewMemoryStore()
+	svc := task.NewService(store, nil, 3)
+	server := NewServer(":0", svc)
+
+	samples := []*task.Task{
+		{ID: "task-1", Goal: "demo", Status: task.StatusPending, Attempts: 0, MaxRetries: 3},
+		{ID: "task-2", Goal: "demo2", Status: task.StatusSucceeded, Attempts: 1, MaxRetries: 3},
+	}
+	for _, sample := range samples {
+		if err := store.Create(context.Background(), sample); err != nil {
+			t.Fatalf("create sample task: %v", err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tasks/?limit=1", nil)
+	rec := httptest.NewRecorder()
+
+	server.handleTaskDetail(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status code: got %d want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp struct {
+		Tasks []task.Task `json:"tasks"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Tasks) == 0 {
+		t.Fatalf("expected at least one task in response")
+	}
+}
